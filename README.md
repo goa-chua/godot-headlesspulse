@@ -286,9 +286,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot "C:\
 依次校验：重新导入 → 同 seed 双跑确定性 → 卡死检测 → 50 局吞吐（< 5s）与报告体积（< 4 KB）
 → 胜率目标区间 → repeat=2 确定性。全部 PASS 返回 0，失败打印 `FAIL` 并返回 1。
 
-Linux / macOS / Git Bash：`bash tools/verify.sh /path/to/godot`（CI 环境用宽松吞吐预算 `CAMPAIGN_BUDGET=120`）。
+Linux / macOS / Git Bash：`bash tools/verify.sh /path/to/godot`（CI 环境用宽松吞吐预算 `CAMPAIGN_BUDGET=120`，两套脚本都支持该环境变量）。
 
-仓库内置 GitHub Actions（`.github/workflows/ci.yml`）：ubuntu-latest 自动下载 Godot 4.7.2 → 跑同一套验收 → 上传 `reports/` 报告产物。
+仓库内置 GitHub Actions 矩阵 CI（`.github/workflows/ci.yml`）：
+
+- **必需 leg**：`ubuntu-latest` 跑 `tools/verify.sh`、`windows-latest` 跑 `tools/verify.ps1`，都固定 Godot 4.7.2；
+- **参考 leg**（`continue-on-error`，不阻塞合并）：`ubuntu-latest` 跟随最新稳定版 Godot，引擎升级的回归会以失败信号出现；
+- 每个 leg 自动下载 / 缓存 Godot → 跑同一套验收 → 上传 `reports/` 报告产物；最新稳定版与固定版本相同时不会重复跑。
 
 ### 给 Coding Agent 的提示词模板
 
@@ -510,8 +514,10 @@ Windows / Steam 版 Godot 是 GUI 子系统程序，PowerShell 不会等待。�
 `SimTelemetry` 每个公开方法首行 `if not _active: return`。
 
 **Q：能在 CI 里跑吗？**
-可以。CI 安装 Godot 4.7 后用 `--headless` 执行 CLI 即可；Windows runner 上直接调用
-`tools/verify.ps1`，Linux / macOS 用同样的 `godot ... -s ...` 命令（脚本仅作等待封装）。
+可以，仓库自带矩阵 CI：Windows runner 调 `tools/verify.ps1`，Linux / macOS（Git Bash）调
+`tools/verify.sh`，两者跑同一套验收并上传报告；另有一个「最新稳定版 Godot」的参考 leg
+（`continue-on-error`，失败不阻塞合并），用来提前发现引擎升级引入的回归。任何 CI 系统上也可以
+直接 `godot --headless ... -s ...` 执行 CLI（脚本仅封装了进程等待与断言）。
 
 ---
 
@@ -533,7 +539,7 @@ Windows / Steam 版 Godot 是 GUI 子系统程序，PowerShell 不会等待。�
 | M2 | 遥测采集、卡死检测、ASCII 热力图、`report.json/md` | ✅ 已实现并验证 |
 | M3 | 批量多进程调度、统计聚合、`.tres` 覆写 A/B | ✅ 已实现并验证 |
 | M4 | 编辑器 Dock（运行 / 进度 / 预览 / 复制 / 复现 Seed） | ✅ 已实现并验证 |
-| CI | GitHub Actions：Linux 自动下载 Godot 4.7.2、跑验收、上传报告 | ✅ 已实现并验证 |
+| CI | GitHub Actions 矩阵：ubuntu + windows × Godot 4.7.2，另加最新稳定版参考 leg；跑验收、上传报告 | ✅ 已实现并验证 |
 | 后续 | 2D/3D 多场景示例、报告 diff 可视化、长时仿真 Streaming | 💡 计划中 |
 
 ---

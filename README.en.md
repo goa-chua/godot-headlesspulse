@@ -290,9 +290,13 @@ It re-imports the project, then checks same-seed determinism, stuck detection, 5
 (< 5 s) and report size (< 4 KB), the win-rate target band, and repeat-determinism. Exit code 0 means
 all checks passed; failures print `FAIL` and return 1.
 
-Linux / macOS / Git Bash: `bash tools/verify.sh /path/to/godot` (CI uses a relaxed `CAMPAIGN_BUDGET=120`).
+Linux / macOS / Git Bash: `bash tools/verify.sh /path/to/godot` (CI uses a relaxed `CAMPAIGN_BUDGET=120`; both scripts honour that variable).
 
-The repository ships a GitHub Actions workflow (`.github/workflows/ci.yml`): on ubuntu-latest it downloads Godot 4.7.2, runs the same acceptance checks and uploads the `reports/` artifacts.
+The repository ships a matrix CI (`.github/workflows/ci.yml`):
+
+- **Required legs**: `ubuntu-latest` runs `tools/verify.sh`, `windows-latest` runs `tools/verify.ps1`, both on the pinned Godot 4.7.2.
+- **Advisory leg** (`continue-on-error`, never blocks a merge): `ubuntu-latest` tracks the latest stable Godot, so an engine upgrade regression shows up as a failure signal.
+- Every leg downloads/caches Godot, runs the same acceptance checks and uploads the `reports/` artifacts; no duplicate leg is created while the latest stable release equals the pinned version.
 
 ### Prompt template for a coding agent
 
@@ -530,9 +534,11 @@ No meaningful cost: `SimRuntime` calls `set_process(false)/set_physics_process(f
 public `SimTelemetry` method starts with `if not _active: return`.
 
 **Can it run in CI?**
-Yes. Install Godot 4.7 and run the CLI with `--headless`. On a Windows runner call
-`tools/verify.ps1`; on Linux/macOS use the same `godot ... -s ...` commands (the scripts only wrap
-process waiting).
+Yes. The repository ships a matrix CI: a Windows runner calls `tools/verify.ps1`, a Linux runner
+calls `tools/verify.sh` — both run the same acceptance checks and upload the reports. An advisory leg
+tracks the latest stable Godot (`continue-on-error`, non-blocking) to surface engine-upgrade
+regressions early. On any CI system you can also run the CLI directly with
+`godot --headless ... -s ...` (the scripts only wrap process waiting and assertions).
 
 ---
 
@@ -558,7 +564,7 @@ process waiting).
 | M2 | Telemetry, stuck detection, ASCII heatmap, `report.json/md` | ✅ implemented and verified |
 | M3 | Batched multi-process scheduler, statistical aggregation, `.tres` override A/B | ✅ implemented and verified |
 | M4 | Editor dock (run / progress / preview / copy / replay seed) | ✅ implemented and verified |
-| CI | GitHub Actions: downloads Godot 4.7.2 on Linux, runs acceptance checks, uploads reports | ✅ implemented and verified |
+| CI | GitHub Actions matrix: ubuntu + windows on Godot 4.7.2, plus an advisory latest-stable leg; runs acceptance checks and uploads reports | ✅ implemented and verified |
 | Next | 2D/3D multi-scene examples, report diff visualization, long-session streaming | 💡 planned |
 
 ---

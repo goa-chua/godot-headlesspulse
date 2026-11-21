@@ -13,16 +13,73 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Shared GitHub runners are slower than a local workstation; the local budget
+  # is 5 s (see AGENTS.md), CI allows more headroom. Both verify scripts honour
+  # CAMPAIGN_BUDGET.
+  CAMPAIGN_BUDGET: "120"
+
 jobs:
-  acceptance:
-    name: acceptance (Godot 4.7.2, linux x86_64)
+  # Resolve the matrix once so every leg (and the job names) use the same
+  # pinned + latest versions. /releases/latest redirects to /releases/tag/<tag>,
+  # so no REST API token or rate limit is involved.
+  resolve:
+    name: resolve Godot matrix
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Resolve pinned and latest stable Godot
+        id: matrix
+        run: |
+          set -euo pipefail
+          pinned="4.7.2"
+          latest=""
+          for _ in 1 2 3; do
+            url=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+              https://github.com/godotengine/godot/releases/latest 2>/dev/null || true)
+            if [ -n "${url:-}" ]; then
+              latest="${url##*/}"   # e.g. 4.7.2-stable
+              latest="${latest%-stable}"
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$latest" ]; then
+            echo "::warning::could not resolve the latest stable Godot; running the pinned matrix only"
+            latest="$pinned"
+          fi
+
+          # Required legs: the version the addon is developed and validated on,
+          # on both Linux (verify.sh) and Windows (verify.ps1).
+          # Advisory leg: the newest stable Godot on Linux, best-effort only, so
+          # a future engine release shows up as a non-blocking signal. Skipped
+          # when it equals the pinned version (no duplicate legs).
+          matrix=$(jq -cn --arg pinned "$pinned" --arg latest "$latest" '
+            [
+              {os: "ubuntu-latest",  version: $pinned, script: "bash", advisory: false},
+              {os: "windows-latest", version: $pinned, script: "pwsh", advisory: false}
+            ] + (if $latest == $pinned then [] else [
+              {os: "ubuntu-latest",  version: $latest, script: "bash", advisory: true}
+            ] end)')
+          echo "pinned=$pinned latest=$latest"
+          printf 'matrix: %s\n' "$matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  acceptance:
+    name: acceptance (${{ matrix.os }} · Godot ${{ matrix.version }} · ${{ matrix.script }})
+    needs: resolve
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    # A newer engine must never block a merge: the advisory leg only reports.
+    continue-on-error: ${{ matrix.advisory }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.resolve.outputs.matrix) }}
     env:
-      GODOT_VERSION: "4.7.2"
-      # Shared GitHub runners are slower than a local workstation; the local
-      # budget is 5 s (see AGENTS.md), CI allows more headroom.
-      CAMPAIGN_BUDGET: "120"
+      GODOT_VERSION: ${{ matrix.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,11 +88,11 @@ jobs:
         id: godot-cache
         uses: actions/cache@v4
         with:
-          path: tools/bin/godot
-          key: godot-linux-x86_64-${{ env.GODOT_VERSION }}
+          path: tools/bin
+          key: godot-${{ runner.os }}-x86_64-${{ matrix.version }}
 
-      - name: Download Godot
-        if: steps.godot-cache.outputs.cache-hit != 'true'
+      - name: Download Godot (Linux)
+        if: runner.os == 'Linux' && steps.godot-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
           mkdir -p tools/bin
@@ -45,19 +102,41 @@ jobs:
           mv "/tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" tools/bin/godot
           chmod +x tools/bin/godot
 
-      - name: Show engine version
+      - name: Download Godot (Windows)
+        if: runner.os == 'Windows' && steps.godot-cache.outputs.cache-hit != 'true'
+        shell: pwsh
         run: |
-          chmod +x tools/bin/godot
-          tools/bin/godot --version
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force tools/bin | Out-Null
+          $url = "https://github.com/godotengine/godot/releases/download/$env:GODOT_VERSION-stable/Godot_v$env:GODOT_VERSION-stable_win64.exe.zip"
+          $zip = Join-Path $env:RUNNER_TEMP 'godot.zip'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $url -OutFile $zip
+              break
+            } catch {
+              if ($attempt -eq 3) { throw }
+              Start-Sleep -Seconds 2
+            }
+          }
+          Expand-Archive -LiteralPath $zip -DestinationPath tools/bin -Force
+          $exe = Get-ChildItem tools/bin -Filter 'Godot_v*_win64.exe' | Select-Object -First 1
+          Move-Item -LiteralPath $exe.FullName -Destination 'tools/bin/godot.exe' -Force
 
-      - name: Acceptance checks
+      - name: Acceptance checks (bash)
+        if: matrix.script == 'bash'
         run: bash tools/verify.sh tools/bin/godot
+
+      - name: Acceptance checks (PowerShell)
+        if: matrix.script == 'pwsh'
+        shell: pwsh
+        run: ./tools/verify.ps1 -Godot "$env:GITHUB_WORKSPACE/tools/bin/godot.exe"
 
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: headlesspulse-reports
+          name: headlesspulse-reports-${{ matrix.os }}-${{ matrix.version }}
           path: reports/
           if-no-files-found: warn
           retention-days: 7

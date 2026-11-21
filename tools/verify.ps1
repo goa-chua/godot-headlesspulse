@@ -1,13 +1,16 @@
 # Godot HeadlessPulse - reproducible acceptance verification (Windows).
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot "C:\path\to\godot.exe"
+#   CAMPAIGN_BUDGET=120 powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot ...
 #
 # Re-imports the project, then asserts determinism, stuck detection, campaign
 # throughput/report budget and repeat-determinism. Exit code 0 = all pass.
+# Mirrors tools/verify.sh (Linux/macOS/Git Bash); CI runs both via a matrix.
 param(
     [string]$Godot = $env:GODOT_BIN,
     [int]$Runs = 50,
-    [double]$CampaignBudgetSeconds = 5.0
+    # Shared/CI runners are slower than a local workstation: allow a relaxed budget.
+    [double]$CampaignBudgetSeconds = $(if ($env:CAMPAIGN_BUDGET) { [double]$env:CAMPAIGN_BUDGET } else { 5.0 })
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,6 +65,14 @@ function Find-RunResult([string]$Directory) {
 Write-Host "Godot HeadlessPulse verification" -ForegroundColor Cyan
 Write-Host "  project : $root"
 Write-Host "  godot   : $Godot"
+$versionLog = Join-Path $verifyDir 'version.log'
+cmd /c ('"' + $Godot + '" --version > "' + $versionLog + '" 2>&1') | Out-Null
+$engineLine = ''
+if (Test-Path $versionLog) {
+    $engineLine = ((Get-Content $versionLog -Raw) -split "`r?`n")[0]
+}
+Write-Host "  engine  : $engineLine"
+Write-Host "  budget  : $CampaignBudgetSeconds s (CAMPAIGN_BUDGET)"
 Write-Host ""
 
 # --- 0. import (refresh script class cache) ---------------------------------

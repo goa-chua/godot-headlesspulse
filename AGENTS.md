@@ -36,7 +36,7 @@ wall-clock dependence.
 | Demo arena throughput | 3600 ticks in ~0.28 s ≈ **195x** per run |
 | Batch workers | a worker runs `--sim-batch=N` seeds sequentially (tree paused, scene reloaded, RNG/checksum/input reset per run); batch=1/3/17 produce identical per-seed digests and identical campaign aggregates |
 | Campaign throughput | 50 runs auto-split into 17 workers × 3 runs: **1.9-2.0 s** (~1400-1450x aggregate) |
-| CI | ubuntu-latest + Godot 4.7.2 Linux, `bash tools/verify.sh`, reports uploaded as artifact |
+| CI | matrix: ubuntu-latest (`bash tools/verify.sh`) + windows-latest (`tools/verify.ps1`) on the pinned Godot 4.7.2, plus a non-blocking ubuntu leg on the latest stable Godot; every leg uploads `reports/` as an artifact |
 | Worker thread pool | each process reserves `cores-1` worker threads; capping to 1 took a 50-run campaign from 6.5 s to 3.4 s (batching then takes it to ~1.9 s) |
 | Batch independence | run 0 gets no pre-run gameplay ticks (tree is paused until seed/bot are ready), so `--sim-batch=1/3/17` yield identical digests; verified by `tools/verify.sh` |
 | `--disable-render-loop` | `RenderingServer.render_loop_enabled == false` |
@@ -123,7 +123,7 @@ addons/headless_pulse/
     └── bots/                       # kiting_shooter_bot.gd, wall_pusher_bot.gd
 sim_configs/                        # campaigns: arena_2d.tres, stuck_test.tres
 tools/                              # verify.ps1 / verify.sh, run_campaign.ps1 (acceptance wrappers)
-.github/workflows/ci.yml            # GitHub Actions: ubuntu-latest + Godot 4.7.2 + verify.sh
+.github/workflows/ci.yml            # GitHub Actions: OS x Godot matrix (verify.sh / verify.ps1)
 reports/                            # generated reports + samples (gitignored, reproducible)
 README.md / README.en.md            # bilingual user docs (Chinese default, English mirror)
 AGENTS.md / LICENSE
@@ -225,7 +225,13 @@ On Linux/macOS (and Git Bash on Windows), the same checks run with bash; this is
 bash tools/verify.sh /path/to/godot      # CAMPAIGN_BUDGET=120 on shared CI runners
 ```
 
-GitHub Actions: `.github/workflows/ci.yml` runs on ubuntu-latest, downloads Godot 4.7.2, executes `tools/verify.sh` and uploads `reports/` as an artifact.
+GitHub Actions: `.github/workflows/ci.yml` runs both scripts as an OS x Godot
+matrix. Required legs: ubuntu-latest (`bash tools/verify.sh`) and windows-latest
+(`tools/verify.ps1`) on the pinned Godot 4.7.2. An advisory ubuntu leg tracks the
+latest stable Godot and is `continue-on-error`, so a future engine release never
+blocks a merge. Every leg downloads/caches the engine and uploads `reports/` as an
+artifact; `CAMPAIGN_BUDGET=120` is set workflow-wide. Use `workflow_dispatch` to
+re-run the whole matrix on demand (no separate Windows-only trigger exists).
 
 It re-imports the project and asserts:
 
