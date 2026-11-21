@@ -15,7 +15,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # One in-flight run per trigger+ref: superseded pushes cancel their predecessor,
+  # but a manual dispatch never cancels the validation of a pushed commit.
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
