@@ -118,7 +118,8 @@ addons/headless_pulse/
     ├── arena_2d/                   # self-contained demo scene, tuning .tres, weapons
     └── bots/                       # kiting_shooter_bot.gd, wall_pusher_bot.gd
 sim_configs/                        # campaigns: arena_2d.tres, stuck_test.tres
-tools/                              # verify.ps1, run_campaign.ps1 (Windows wrappers)
+tools/                              # verify.ps1 / verify.sh, run_campaign.ps1 (acceptance wrappers)
+.github/workflows/ci.yml            # GitHub Actions: ubuntu-latest + Godot 4.7.2 + verify.sh
 reports/                            # generated reports + samples (gitignored, reproducible)
 README.md / README.en.md            # bilingual user docs (Chinese default, English mirror)
 AGENTS.md / LICENSE
@@ -213,6 +214,14 @@ applied by every worker before the scene loads).
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot "C:\path\to\godot.exe"
 # PowerShell 7+: pwsh -File tools/verify.ps1 -Godot "C:\path\to\godot.exe"
 ```
+
+On Linux/macOS (and Git Bash on Windows), the same checks run with bash; this is what CI uses:
+
+```bash
+bash tools/verify.sh /path/to/godot      # CAMPAIGN_BUDGET=120 on shared CI runners
+```
+
+GitHub Actions: `.github/workflows/ci.yml` runs on ubuntu-latest, downloads Godot 4.7.2, executes `tools/verify.sh` and uploads `reports/` as an artifact.
 
 It re-imports the project and asserts:
 

@@ -6,6 +6,9 @@
 /reports/
 /tmp/
 
+# Downloaded engine binaries (CI cache only)
+/tools/bin/
+
 # Logs
 *.log
 

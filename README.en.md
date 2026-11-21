@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-[![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)
+[![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)`n[![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
 [![Godot](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org)
 [![Status](https://img.shields.io/badge/status-M1--M4%20verified-brightgreen)](#roadmap)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -288,6 +288,10 @@ It re-imports the project, then checks same-seed determinism, stuck detection, 5
 (< 5 s) and report size (< 4 KB), the win-rate target band, and repeat-determinism. Exit code 0 means
 all checks passed; failures print `FAIL` and return 1.
 
+Linux / macOS / Git Bash: `bash tools/verify.sh /path/to/godot` (CI uses a relaxed `CAMPAIGN_BUDGET=120`).
+
+The repository ships a GitHub Actions workflow (`.github/workflows/ci.yml`): on ubuntu-latest it downloads Godot 4.7.2, runs the same acceptance checks and uploads the `reports/` artifacts.
+
 ### Prompt template for a coding agent
 
 ```text
@@ -552,7 +556,8 @@ process waiting).
 | M2 | Telemetry, stuck detection, ASCII heatmap, `report.json/md` | ✅ implemented and verified |
 | M3 | Batched multi-process scheduler, statistical aggregation, `.tres` override A/B | ✅ implemented and verified |
 | M4 | Editor dock (run / progress / preview / copy / replay seed) | ✅ implemented and verified |
-| Next | GitHub Actions matrix CI, 2D/3D multi-scene examples, report diff visualization, long-session streaming | 💡 planned |
+| CI | GitHub Actions: downloads Godot 4.7.2 on Linux, runs acceptance checks, uploads reports | ✅ implemented and verified |
+| Next | 2D/3D multi-scene examples, report diff visualization, long-session streaming | 💡 planned |
 
 ---
 

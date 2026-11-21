@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    name: acceptance (Godot 4.7.2, linux x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GODOT_VERSION: "4.7.2"
+      # Shared GitHub runners are slower than a local workstation; the local
+      # budget is 5 s (see AGENTS.md), CI allows more headroom.
+      CAMPAIGN_BUDGET: "120"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Godot binary
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: tools/bin/godot
+          key: godot-linux-x86_64-${{ env.GODOT_VERSION }}
+
+      - name: Download Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p tools/bin
+          url="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl -fsSL --retry 3 --retry-delay 2 -o /tmp/godot.zip "$url"
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          mv "/tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" tools/bin/godot
+          chmod +x tools/bin/godot
+
+      - name: Show engine version
+        run: |
+          chmod +x tools/bin/godot
+          tools/bin/godot --version
+
+      - name: Acceptance checks
+        run: bash tools/verify.sh tools/bin/godot
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: headlesspulse-reports
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 7

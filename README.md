@@ -2,7 +2,7 @@
 
 **简体中文** | [English](README.en.md)
 
-[![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)
+[![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)`n[![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
 [![Godot](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org)
 [![Status](https://img.shields.io/badge/status-M1--M4%20verified-brightgreen)](#路线图)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -284,6 +284,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot "C:\
 依次校验：重新导入 → 同 seed 双跑确定性 → 卡死检测 → 50 局吞吐（< 5s）与报告体积（< 4 KB）
 → 胜率目标区间 → repeat=2 确定性。全部 PASS 返回 0，失败打印 `FAIL` 并返回 1。
 
+Linux / macOS / Git Bash：`bash tools/verify.sh /path/to/godot`（CI 环境用宽松吞吐预算 `CAMPAIGN_BUDGET=120`）。
+
+仓库内置 GitHub Actions（`.github/workflows/ci.yml`）：ubuntu-latest 自动下载 Godot 4.7.2 → 跑同一套验收 → 上传 `reports/` 报告产物。
+
 ### 给 Coding Agent 的提示词模板
 
 ```text
@@ -527,7 +531,8 @@ Windows / Steam 版 Godot 是 GUI 子系统程序，PowerShell 不会等待。�
 | M2 | 遥测采集、卡死检测、ASCII 热力图、`report.json/md` | ✅ 已实现并验证 |
 | M3 | 批量多进程调度、统计聚合、`.tres` 覆写 A/B | ✅ 已实现并验证 |
 | M4 | 编辑器 Dock（运行 / 进度 / 预览 / 复制 / 复现 Seed） | ✅ 已实现并验证 |
-| 后续 | GitHub Actions 矩阵 CI、2D/3D 多场景示例、报告 diff 可视化、长时仿真 Streaming | 💡 计划中 |
+| CI | GitHub Actions：Linux 自动下载 Godot 4.7.2、跑验收、上传报告 | ✅ 已实现并验证 |
+| 后续 | 2D/3D 多场景示例、报告 diff 可视化、长时仿真 Streaming | 💡 计划中 |
 
 ---
 
