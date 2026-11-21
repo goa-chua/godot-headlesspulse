@@ -2,7 +2,8 @@
 
 [简体中文](README.md) | **English**
 
-[![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)`n[![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
+[![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)
+[![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
 [![Godot](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org)
 [![Status](https://img.shields.io/badge/status-M1--M4%20verified-brightgreen)](#roadmap)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -218,7 +219,8 @@ Built-in anomaly rules (all thresholds live on `SimConfig`):
 | `weapon_imbalance` | max/min weapon DPS ratio > `weapon_dps_ratio_warn` (2.0) | the imbalanced pair + `.tres` fields to tune |
 | `too_hard` / `too_easy` | win rate outside the target band | win rate vs band + pressure-tuning hint |
 | `runs_end_early` | median survival < 35% of the budget | early-death warning |
-| `nondeterministic` | identical seeds produce different digests | **CRITICAL** with unseeded-RNG/time-dependency hints |
+| 
+ondeterministic` | identical seeds produce different digests | **CRITICAL** with unseeded-RNG/time-dependency hints |
 
 ---
 

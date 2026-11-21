@@ -2,7 +2,8 @@
 
 **简体中文** | [English](README.en.md)
 
-[![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)`n[![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
+[![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)
+[![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
 [![Godot](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org)
 [![Status](https://img.shields.io/badge/status-M1--M4%20verified-brightgreen)](#路线图)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -217,7 +218,8 @@ Legend: `.` low | `:` medium | `+` high | `#` peak traffic | `X` death | `!` stu
 | `weapon_imbalance` | 武器 DPS 比值 > `weapon_dps_ratio_warn`（默认 2.0） | 失衡武器对 + 建议调整的 `.tres` 字段 |
 | `too_hard` / `too_easy` | 胜率落在目标区间外 | 胜率与目标区间 + 增减敌人数值建议 |
 | `runs_end_early` | 中位存活 < 预算 35% | 过早死亡提示 |
-| `nondeterministic` | 同 seed 的 digest 不一致 | **CRITICAL**：未播种随机 / 时间依赖排查建议 |
+| 
+ondeterministic` | 同 seed 的 digest 不一致 | **CRITICAL**：未播种随机 / 时间依赖排查建议 |
 
 ---
 
