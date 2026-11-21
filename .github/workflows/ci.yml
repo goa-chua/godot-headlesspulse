@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      pinned_version:
+        description: "Godot version for the required legs (default: 4.7.2)"
+        required: false
+        default: "4.7.2"
 
 permissions:
   contents: read
@@ -27,6 +32,9 @@ jobs:
     name: resolve Godot matrix
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      # Manual runs may pick a different engine build; push/PR runs use the default.
+      PINNED_VERSION: ${{ inputs.pinned_version }}
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
@@ -34,7 +42,7 @@ jobs:
         id: matrix
         run: |
           set -euo pipefail
-          pinned="4.7.2"
+          pinned="${PINNED_VERSION:-4.7.2}"
           latest=""
           for _ in 1 2 3; do
             url=$(curl -fsSL -o /dev/null -w '%{url_effective}' \

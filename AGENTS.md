@@ -231,7 +231,8 @@ matrix. Required legs: ubuntu-latest (`bash tools/verify.sh`) and windows-latest
 latest stable Godot and is `continue-on-error`, so a future engine release never
 blocks a merge. Every leg downloads/caches the engine and uploads `reports/` as an
 artifact; `CAMPAIGN_BUDGET=120` is set workflow-wide. Use `workflow_dispatch` to
-re-run the whole matrix on demand (no separate Windows-only trigger exists).
+re-run the whole matrix on demand; its optional `pinned_version` input retargets
+the required legs at another engine build (e.g. to reproduce a regression).
 
 It re-imports the project and asserts:
 
