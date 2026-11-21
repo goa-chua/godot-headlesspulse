@@ -13,12 +13,12 @@ Repo: <https://github.com/goa-chua/godot-headlesspulse>
 A Godot 4.7 addon (`addons/headless_pulse/`) that lets a coding agent or designer:
 
 1. Run **N headless, deterministic, fixed-timestep simulations** of a game scene
-   with a heuristic bot as fast as the CPU allows (measured **~1400-1500x aggregate**
-   speedup: 50 runs of 60 simulated seconds in **1.8-2.0 s**).
+   with a heuristic bot as fast as the CPU allows (measured **~1400-1450x aggregate**
+   speedup: 50 runs of 60 simulated seconds in **1.9-2.0 s**).
 2. Collect **structured telemetry** (events, per-weapon damage, sampled
    positions, stuck episodes, time series).
 3. Emit two agent-friendly artifacts: `report.json` (exact numbers) and
-   `report.md` (~2.3 KB ASCII heatmap + auto-detected anomalies + fix hints).
+   `report.md` (~2.5 KB ASCII heatmap + auto-detected anomalies + fix hints).
 4. A/B test balance values by overriding `.tres` properties from the CLI, with
    a diff against a baseline report.
 
@@ -33,10 +33,12 @@ wall-clock dependence.
 | `--fixed-fps 60` gives fixed delta | `_process`/`_physics_process` delta = `1/60` exactly |
 | physics : render ratio | 3600 ticks vs 3599 frames → exactly 1 physics step per iteration |
 | Empty-scene throughput | 3600 ticks in 0.0055 s ≈ 10,860x |
-| Demo arena throughput | 3600 ticks in ~0.35 s ≈ **170x** per run |
-| Batch workers | a worker runs `--sim-batch=N` seeds sequentially (pause tree, reload scene, reset RNG/checksum/proxy); batch=1/3/5 produce identical per-seed digests |
-| Campaign throughput | 50 runs auto-split into 17 workers × 3 runs: **1.8-2.0 s** (~1400-1500x aggregate) |
+| Demo arena throughput | 3600 ticks in ~0.28 s ≈ **195x** per run |
+| Batch workers | a worker runs `--sim-batch=N` seeds sequentially (tree paused, scene reloaded, RNG/checksum/input reset per run); batch=1/3/17 produce identical per-seed digests and identical campaign aggregates |
+| Campaign throughput | 50 runs auto-split into 17 workers × 3 runs: **1.9-2.0 s** (~1400-1450x aggregate) |
+| CI | ubuntu-latest + Godot 4.7.2 Linux, `bash tools/verify.sh`, reports uploaded as artifact |
 | Worker thread pool | each process reserves `cores-1` worker threads; capping to 1 took a 50-run campaign from 6.5 s to 3.4 s (batching then takes it to ~1.9 s) |
+| Batch independence | run 0 gets no pre-run gameplay ticks (tree is paused until seed/bot are ready), so `--sim-batch=1/3/17` yield identical digests; verified by `tools/verify.sh` |
 | `--disable-render-loop` | `RenderingServer.render_loop_enabled == false` |
 | `--headless` | dummy display + dummy audio, no GPU work |
 | `-s` script mode | **Autoloads DO load**; `MainLoop`/`SceneTree` `_process()` is driven |
@@ -79,7 +81,7 @@ Three pitfalls that already caused bugs here — keep them in mind:
 6. **Output paths.** Generated data goes under `res://reports/...` (writable in a
    normal project) — not `user://`.
 7. **Strict typing.** `var x: float`, typed arrays, explicit `-> void` returns.
-8. **Report size budget.** `report.md` must stay < 4 KB (currently ~2.3 KB for a
+8. **Report size budget.** `report.md` must stay < 4 KB (currently ~2.5 KB for a
    40x20 grid). Adding verbose prose to it needs an explicit reason.
 9. **Cap the worker thread pool for campaigns.** Every Godot process reserves
    `cores-1` worker threads; 20+ concurrent workers then create 500+ competing
@@ -91,7 +93,9 @@ Three pitfalls that already caused bugs here — keep them in mind:
     tree, reloads the scene and resets RNG/checksum/input per run. Do not rely on
     state that survives a scene reload (autoloads, static vars, mutated global
     resources) for per-run state; games with such global state should use
-    `--sim-batch=1` (one process per run).
+    `--sim-batch=1` (one process per run). The tree is paused from `_ready` until
+    the run is seeded, so run 0 must never tick before the run starts: results
+    must not depend on `--sim-batch`. `tools/verify.sh` / `verify.ps1` assert this.
 
 ## Directory layout
 
@@ -228,7 +232,7 @@ It re-imports the project and asserts:
 1. **Determinism** — same seed twice → identical `digest`, `final_pos`, `kills`, `hp`.
 2. **Stuck detection** — `wall_pusher_bot` ends with `end_reason=stuck` near the trap,
    and `report.md` contains a `!` hotspot.
-3. **Throughput** — 50 runs of 60 simulated seconds complete in < 5 s (measured ~1.8-1.9 s),
+3. **Throughput** — 50 runs of 60 simulated seconds complete in < 5 s (measured ~1.9 s),
    `report.md` < 4 KB, win rate inside the configured target band.
 4. **Repeat determinism** — `--sim-repeat=2` campaign reports `identical = true`
    with zero mismatches.
@@ -239,12 +243,12 @@ Exit code 0 = all checks pass. Any failing check prints `FAIL` and returns 1.
 
 - **M1 — deterministic fast-forward kernel**: done. Batch flags, `SimRuntime`,
   `SimRNG`, `SimChecksum`, `SimInputProxy`, `SimBotBase`, arena demo. Verified
-  bit-exact with identical digests; ~170x per run, ~1400x campaign aggregate.
+  bit-exact with identical digests; ~195x per run, ~1400x campaign aggregate.
 - **M2 — telemetry, stuck detection, ASCII heatmap**: done. Verified with the
   wall-pusher bot: stuck event at t≈4.03 s at `(-269, 33)`, `!` hotspot rendered,
   CRITICAL stuck-cluster anomaly emitted.
 - **M3 — batched multi-process orchestrator + statistical aggregation + A/B**: done.
-  50 runs in 1.8-2.0 s, `report.json`/`report.md` written, `.tres` overrides work,
+  50 runs in 1.9-2.0 s, `report.json`/`report.md` written, `.tres` overrides work,
   baseline diff renders.
 - **M4 — editor dock**: done. `plugin.gd` registers a dock that runs campaigns,
   shows progress and the ASCII report, copies it for an agent, and replays a seed

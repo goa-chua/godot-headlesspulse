@@ -115,6 +115,39 @@ else
     show_log_tail
 fi
 
+# --- 1b. batch-size independence -------------------------------------------
+# Results must not depend on how many seeds one worker process runs: run three
+# seeds one-per-process and the same three in a single batch=3 worker.
+for batch_seed in 4242 4243 4244; do
+    run_godot "single_$batch_seed" --headless --fixed-fps 60 --disable-render-loop --disable-vsync --path . \
+        res://addons/headless_pulse/examples/arena_2d/arena.tscn -- \
+        --sim-mode --sim-seed=$batch_seed --sim-batch=1 --sim-max-time=60 \
+        --sim-out=reports/_ci/single_$batch_seed.json
+done
+run_godot batch3 --headless --fixed-fps 60 --disable-render-loop --disable-vsync --path . \
+    res://addons/headless_pulse/examples/arena_2d/arena.tscn -- \
+    --sim-mode --sim-seed=4242 --sim-batch=3 --sim-max-time=60 --sim-out=reports/_ci/batch3
+batch_ok=1
+batch_detail=""
+for batch_seed in 4242 4243 4244; do
+    if [ ! -f "$OUT/single_$batch_seed.json" ] || [ ! -f "$OUT/batch3/seed$batch_seed.json" ]; then
+        batch_ok=0
+        batch_detail="missing result for seed $batch_seed"
+        continue
+    fi
+    single_digest="$(json "$OUT/single_$batch_seed.json" determinism.digest)"
+    batch_digest="$(json "$OUT/batch3/seed$batch_seed.json" determinism.digest)"
+    if [ "$single_digest" != "$batch_digest" ]; then
+        batch_ok=0
+        batch_detail="seed $batch_seed differs (batch1=$single_digest batch3=$batch_digest)"
+    fi
+done
+if [ "$batch_ok" = "1" ]; then
+    pass "batch-size independence" "batch=1 vs batch=3 digests match for 3 seeds"
+else
+    fail "batch-size independence" "$batch_detail"
+    show_log_tail
+fi
 # --- 2. stuck detection acceptance -----------------------------------------
 run_godot stuck --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- \
     --sim-mode --sim-config=res://sim_configs/stuck_test.tres --sim-out=reports/_ci/stuck

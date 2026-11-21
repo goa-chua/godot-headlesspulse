@@ -86,6 +86,11 @@ func _ready() -> void:
 	_checksum = SimChecksum.new()
 	_input_proxy = SimInputProxy.new()
 
+	# Freeze gameplay before the main scene is instantiated. Without this, run 0
+	# would tick once before it is configured (wave timer advanced by one tick),
+	# which made results depend on the batch size and therefore on CPU core count.
+	get_tree().paused = true
+
 	# Spawn the first bot after the main scene is instantiated.
 	call_deferred("_run_batch")
 
@@ -186,7 +191,7 @@ func _reload_for_next_run() -> void:
 		var scene: Node = tree.current_scene
 		if scene != null and scene.scene_file_path == _config.scene_path:
 			break
-	tree.paused = false
+	# The tree stays paused: _start_run() unpauses it once seed/bot are ready.
 
 
 func _start_run() -> void:
@@ -203,6 +208,10 @@ func _start_run() -> void:
 	if _telemetry != null and _telemetry.has_method("begin"):
 		_telemetry.begin(self, _config, _rng)
 	_spawn_bot()
+	# Every run - including the first - starts with zero gameplay ticks after the
+	# scene was configured, so results never depend on batch size.
+	if get_tree().paused:
+		get_tree().paused = false
 	_run_start_usec = Time.get_ticks_usec()
 	_running = true
 	if _config.verbose:

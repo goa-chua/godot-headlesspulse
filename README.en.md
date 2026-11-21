@@ -45,7 +45,7 @@ weapon imbalances, edit the `.tres`, and re-run an A/B regression.
 | Capability | What it gives you |
 |---|---|
 | **Deterministic fast-forward** | `--fixed-fps 60` disables real-time sync, so `delta` is exactly `1/60`; 1 frame = 1 physics step. Per-tick SHA-256 proves **bit-exact** reproducibility for a seed. |
-| **Actually fast** | No `Engine.time_scale` hacks (which drop physics steps, tunnel through geometry and stay wall-clock bound). ~220x per run, ~600-820x aggregate for a campaign. |
+| **Actually fast** | No `Engine.time_scale` hacks (which drop physics steps, tunnel through geometry and stay wall-clock bound). ~195x per run, ~1400-1450x aggregate for a campaign. |
 | **Batched multi-process** | Each process runs a batch of seeds sequentially (auto-chunked), amortising engine start-up and thread-pool cost; `SimOrchestrator` spawns via `OS.create_process` and reaps via `is_process_running`. Workers only write files, never rely on stdout pipes. |
 | **Zero intrusion** | Without `--sim-mode`, `SimRuntime` disables its own processing and every `SimTelemetry` method returns immediately — **zero cost** in the shipping game. |
 | **Virtual input and aim** | `SimInputProxy` injects through the real `Input` singleton; headless has no cursor, so `SimRuntime.get_aim_world_position()` provides virtual aiming. |
@@ -64,16 +64,16 @@ weapon imbalances, edit the `.tres`, and re-run an A/B regression.
 
 | Metric | Result |
 |---|---|
-| Single run, 60 s of logic (3600 ticks) | **~0.35 s internally → ~170x**; ~0.65 s process wall time incl. engine boot |
-| 50 runs × 60 s campaign | **1.8-2.0 s** internal → **~1400-1500x aggregate speedup** |
+| Single run, 60 s of logic (3600 ticks) | **~0.28 s internally → ~195x**; ~0.56 s process wall time incl. engine boot |
+| 50 runs × 60 s campaign | **1.9-2.0 s** internal → **~1400-1450x aggregate speedup** |
 | Batched workers | 50 runs auto-split into 17 workers (3 runs each sequentially) instead of 50 engine boots |
 | Worker thread pool impact | each process reserves `cores-1` worker threads by default (24 cores = 23 threads/process), so 20+ concurrent workers compete; with `threading/worker_pool/max_threads=1` 50 runs went 6.5 s → 3.4 s, and batching takes it to **≈1.9 s** |
 | Determinism (same seed twice) | digest, final position, kills and HP **identical** |
 | Repeat-determinism (20 seeds × 2) | 40 runs, **0 mismatches** (and batch=1/3/5 produce identical per-seed digests) |
 | Stuck detection | wall-pusher bot flagged at **t = 4.03 s**, position `(-269, 33)` |
 | Empty-scene ceiling | 3600 ticks in 0.0055 s ≈ **10,860x** |
-| Report size | `report.md` **2.3 KB** (40×20 grid, budget < 4 KB) |
-| Demo balance | 38% win rate, 4% stuck rate, median survival 55.1 s |
+| Report size | `report.md` **2.5 KB** (40×20 grid, budget < 4 KB) |
+| Demo balance | 48% win rate, 4% stuck rate, median survival 59.7 s |
 
 How to reproduce: see "One-command verification" under [Common workflows](#common-workflows).
 
@@ -171,23 +171,24 @@ Real output from a 50-run campaign (generated locally at `reports/accept50/repor
 # Simulation Balance Report
 
 - **Config**: `res://addons/headless_pulse/examples/arena_2d/arena.tscn` (arena_2d)
-- **Runs**: 50 (Seed: 1000..1049) | **Real Wall Time**: 1.81s | **Avg Sim Time/Run**: 54.4s (1503x Speedup)
-- **Win Rate**: 38.0% (19/50) | **Stuck Rate**: 4.0% (2/50) | **Median Survival**: 55.1s
+- **Runs**: 50 (Seed: 1000..1049) | **Real Wall Time**: 1.95s | **Avg Sim Time/Run**: 55.5s (1426x Speedup)
+- **Win Rate**: 48.0% (24/50) | **Stuck Rate**: 4.0% (2/50) | **Median Survival**: 59.7s
 
 ## 1. Anomalies & Bottlenecks (Auto-Detected)
-- None detected.
+- [WARNING] **Death Hotspot**: 31% of deaths happened near (x: 468, y: -285).
+  - _Fix_: Playtest that encounter location; it may be an unavoidable damage source or an unfair spawn.
 
 ## 2. Spatial Heatmap (World Bounds: X[-480, 480], Y[-300, 300], Grid: 40x20)
 Legend: `.` low | `:` medium | `+` high | `#` peak traffic | `X` death | `!` stuck
 +----------------------------------------+
-|X::::..:::::::.::::::::::X:::::::::::X.X|
-|::::..::::.:::::::!!:::::::::::::.::.::.|   <- '!' = stuck hotspot
-|::.::::::::::::::::.......:::::.::..:::.|
-|::.::.::XX:::::::::::::::X....:::::::::.|
-|:::::::::::::::::::++:::::::::::::::::::|
-|:::::.::X::::::::::##:::::::::::::::::::|   <- '#' = peak traffic
-|.::::::::::::::::::::::::::::::::::::::X|
-|X::::::::::::X::::::::::X:::::::::..:::X|
+|X::::.::::::::.::::::::::X:::::::::::X:X|
+|::::..::::.:::::::!!::::::::::.::.::.::.|   <- '!' = stuck hotspot
+|::.::::::::::::::::.......:::::.:::.::::|
+|:::::.:::::::::::::++:::::::::::::::::::|   <- '+' = high traffic
+|:::::.::X::::::::::+#:::::::::::::::::::|
+|:::::.::::::::::::::::::::::::::::::::::|
+|:::::::::::::::::::::::::::::::::::::.::|
+|:::::.::::::XX::::::::::X::::::::::::::X|
 +----------------------------------------+
 
 ## 3. Time-Series Progression (Bucketed every 15s, Median / P90)
@@ -195,19 +196,19 @@ Legend: `.` low | `:` medium | `+` high | `#` peak traffic | `X` death | `!` stu
 |------|--------|------------|------------|-----------|-------------|
 | 15s  | 100%   | 100% / 100% | 60        | 46        | 6.0         |
 | 30s  | 100%   | 100% / 100% | 160       | 58        | 8.0         |
-| 45s  | 90%    | 85% / 100%  | 235       | 66        | 41.0        |
-| 60s  | 38%    | 75% / 94%   | 275       | 62        | 67.0        |
+| 45s  | 92%    | 83% / 100%  | 230       | 66        | 42.0        |
+| 60s  | 48%    | 74% / 97%   | 275       | 63        | 67.0        |
 
 ## 4. Weapon Balance
 | Weapon  | Damage | Share | DPS  |
 |---------|--------|-------|------|
-| shotgun | 53447  | 38.3% | 19.6 |
-| smg     | 86027  | 61.7% | 31.6 |
+| shotgun | 55534  | 38.6% | 20.0 |
+| smg     | 88411  | 61.4% | 31.8 |
 
 ## 6. Hotspots
-- Deaths: 31 total | top: (468, -285)x6, (-276, -15)x6, ...
+- Deaths: 26 total | top: (468, -285)x8, (-276, -15)x4, ...
 - Stuck: 2 total | top: (-36, 195)x1, (-12, 195)x1
-- Player stats: kills median 52 / p90 57 | gold median 260 | accuracy 80%
+- Player stats: kills median 54 / p90 59 | gold median 270 | accuracy 80%
 ```
 
 Built-in anomaly rules (all thresholds live on `SimConfig`):
@@ -219,8 +220,7 @@ Built-in anomaly rules (all thresholds live on `SimConfig`):
 | `weapon_imbalance` | max/min weapon DPS ratio > `weapon_dps_ratio_warn` (2.0) | the imbalanced pair + `.tres` fields to tune |
 | `too_hard` / `too_easy` | win rate outside the target band | win rate vs band + pressure-tuning hint |
 | `runs_end_early` | median survival < 35% of the budget | early-death warning |
-| 
-ondeterministic` | identical seeds produce different digests | **CRITICAL** with unseeded-RNG/time-dependency hints |
+| `nondeterministic` | identical seeds produce different digests | **CRITICAL** with unseeded-RNG/time-dependency hints |
 
 ---
 

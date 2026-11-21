@@ -88,6 +88,30 @@ if ($a) {
     Check 'determinism (same seed)' $false 'run result missing'
 }
 
+# --- 1b. batch-size independence -------------------------------------------
+$batchSeeds = @(4242, 4243, 4244)
+foreach ($batchSeed in $batchSeeds) {
+    $null = Invoke-Godot "single_$batchSeed" ($singleArgs.Replace('--sim-seed=4242', "--sim-seed=$batchSeed") +
+        " --sim-batch=1 --sim-out=res://reports/_verify/single_$batchSeed.json")
+}
+$null = Invoke-Godot 'batch3' ($singleArgs.Replace('--sim-seed=4242', '--sim-seed=4242') +
+    ' --sim-batch=3 --sim-out=res://reports/_verify/batch3')
+$batchOk = $true
+$batchDetail = 'batch=1 vs batch=3 digests match for 3 seeds'
+foreach ($batchSeed in $batchSeeds) {
+    $singleRun = Read-Json (Join-Path $verifyDir "single_$batchSeed.json")
+    $batchedRun = Read-Json (Join-Path $verifyDir "batch3\seed$batchSeed.json")
+    if (-not $singleRun -or -not $batchedRun) {
+        $batchOk = $false
+        $batchDetail = "missing result for seed $batchSeed"
+        continue
+    }
+    if ($singleRun.determinism.digest -ne $batchedRun.determinism.digest) {
+        $batchOk = $false
+        $batchDetail = "seed $batchSeed differs (batch1=$($singleRun.determinism.digest) batch3=$($batchedRun.determinism.digest))"
+    }
+}
+Check 'batch-size independence' $batchOk $batchDetail
 # --- 2. stuck detection acceptance -----------------------------------------
 $stuckDir = Join-Path $root 'reports\_verify\stuck'
 Remove-Item $stuckDir -Recurse -Force -ErrorAction SilentlyContinue

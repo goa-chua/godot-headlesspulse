@@ -44,7 +44,7 @@
 | 能力 | 说明 |
 |---|---|
 | **确定性快进** | `--fixed-fps 60` 关闭真实时间同步，固定步长让 delta 恒为 `1/60`；1 帧 = 1 物理步。同种子逐 tick SHA-256 **bit-exact** 可复现。 |
-| **真正的高速** | 不依赖 `Engine.time_scale`（会丢物理步、穿模、仍受墙钟限制）。纯 CPU 全速推进，单局 ~220x，campaign 聚合 ~600–820x。 |
+| **真正的高速** | 不依赖 `Engine.time_scale`（会丢物理步、穿模、仍受墙钟限制）。纯 CPU 全速推进，单局 ~195x，campaign 聚合 ~1400–1450x。 |
 | **批量多进程** | 一进程顺序跑一批种子（自动分片），引擎启动与线程开销摊薄到多局；`SimOrchestrator` 用 `OS.create_process` 派发、`is_process_running` 回收，worker 只落盘不依赖 stdout。 |
 | **零侵入接入** | 非 `--sim-mode` 时 `SimRuntime` 关闭自身处理、`SimTelemetry` 每个方法立即 return，**游戏本体零开销**。 |
 | **虚拟输入与瞄准** | `SimInputProxy` 走真实 `Input` 单例注入，无需改输入系统；无头环境没有光标，用 `SimRuntime.get_aim_world_position()` 暴露虚拟瞄准。 |
@@ -63,16 +63,16 @@
 
 | 指标 | 实测结果 |
 |---|---|
-| 单局 60s 逻辑（3600 tick） | 内部 **~0.35 s → ~170x**；进程总耗时 ~0.65 s（含引擎启动） |
-| 50 局 × 60s campaign | **1.8–2.0 s**（内部）→ **~1400–1500x 聚合加速** |
+| 单局 60s 逻辑（3600 tick） | 内部 **~0.28 s → ~195x**；进程总耗时 ~0.56 s（含引擎启动） |
+| 50 局 × 60s campaign | **1.9–2.0 s**（内部）→ **~1400–1450x 聚合加速** |
 | 批量 worker | 50 局自动切成 17 个 worker（每进程顺序跑 3 局），避免 50 次引擎启动 |
 | worker 线程配置的影响 | 默认每进程按核数预留 worker 线程（24 核 = 23 线程/进程），20+ 并发时互相争抢；`threading/worker_pool/max_threads=1` 让 50 局 6.5 s → 3.4 s，叠加批量后 ≈ 1.9 s |
 | 确定性（同 seed 两次） | digest / 终局坐标 / 击杀 / HP **完全一致** |
 | 确定性回归（20 seed × 2） | 40 局 **0 mismatch**（且 batch=1/3/5 的 digest 逐局一致） |
 | 卡死检测 | 撞 U 形陷阱的 Bot 在 **t = 4.03 s**、坐标 `(-269, 33)` 精确判定 |
 | 空场景极限 | 3600 tick / 0.0055 s ≈ **10860x** |
-| 报告体积 | `report.md` **2.3 KB**（40×20 网格，预算 < 4 KB） |
-| 示例平衡结果 | 胜率 38%、卡死率 4%、中位存活 55.1s |
+| 报告体积 | `report.md` **2.5 KB**（40×20 网格，预算 < 4 KB） |
+| 示例平衡结果 | 胜率 48%、卡死率 4%、中位存活 59.7s |
 
 复现方法见 [常用工作流](#常用工作流) 的「一键验收」。
 
@@ -170,23 +170,24 @@ reports/campaign/
 # Simulation Balance Report
 
 - **Config**: `res://addons/headless_pulse/examples/arena_2d/arena.tscn` (arena_2d)
-- **Runs**: 50 (Seed: 1000..1049) | **Real Wall Time**: 1.81s | **Avg Sim Time/Run**: 54.4s (1503x Speedup)
-- **Win Rate**: 38.0% (19/50) | **Stuck Rate**: 4.0% (2/50) | **Median Survival**: 55.1s
+- **Runs**: 50 (Seed: 1000..1049) | **Real Wall Time**: 1.95s | **Avg Sim Time/Run**: 55.5s (1426x Speedup)
+- **Win Rate**: 48.0% (24/50) | **Stuck Rate**: 4.0% (2/50) | **Median Survival**: 59.7s
 
 ## 1. Anomalies & Bottlenecks (Auto-Detected)
-- None detected.
+- [WARNING] **Death Hotspot**: 31% of deaths happened near (x: 468, y: -285).
+  - _Fix_: Playtest that encounter location; it may be an unavoidable damage source or an unfair spawn.
 
 ## 2. Spatial Heatmap (World Bounds: X[-480, 480], Y[-300, 300], Grid: 40x20)
 Legend: `.` low | `:` medium | `+` high | `#` peak traffic | `X` death | `!` stuck
 +----------------------------------------+
-|X::::..:::::::.::::::::::X:::::::::::X.X|
-|::::..::::.:::::::!!:::::::::::::.::.::.|   <- '!' = 卡死热点
-|::.::::::::::::::::.......:::::.::..:::.|
-|::.::.::XX:::::::::::::::X....:::::::::.|
-|:::::::::::::::::::++:::::::::::::::::::|
-|:::::.::X::::::::::##:::::::::::::::::::|   <- '#' = 高流量区域
-|.::::::::::::::::::::::::::::::::::::::X|
-|X::::::::::::X::::::::::X:::::::::..:::X|
+|X::::.::::::::.::::::::::X:::::::::::X:X|
+|::::..::::.:::::::!!::::::::::.::.::.::.|   <- '!' = 卡死热点
+|::.::::::::::::::::.......:::::.:::.::::|
+|:::::.:::::::::::::++:::::::::::::::::::|   <- '+' = 较高流量
+|:::::.::X::::::::::+#:::::::::::::::::::|
+|:::::.::::::::::::::::::::::::::::::::::|
+|:::::::::::::::::::::::::::::::::::::.::|
+|:::::.::::::XX::::::::::X::::::::::::::X|
 +----------------------------------------+
 
 ## 3. Time-Series Progression (Bucketed every 15s, Median / P90)
@@ -194,19 +195,19 @@ Legend: `.` low | `:` medium | `+` high | `#` peak traffic | `X` death | `!` stu
 |------|--------|------------|------------|-----------|-------------|
 | 15s  | 100%   | 100% / 100% | 60        | 46        | 6.0         |
 | 30s  | 100%   | 100% / 100% | 160       | 58        | 8.0         |
-| 45s  | 90%    | 85% / 100%  | 235       | 66        | 41.0        |
-| 60s  | 38%    | 75% / 94%   | 275       | 62        | 67.0        |
+| 45s  | 92%    | 83% / 100%  | 230       | 66        | 42.0        |
+| 60s  | 48%    | 74% / 97%   | 275       | 63        | 67.0        |
 
 ## 4. Weapon Balance
 | Weapon  | Damage | Share | DPS  |
 |---------|--------|-------|------|
-| shotgun | 53447  | 38.3% | 19.6 |
-| smg     | 86027  | 61.7% | 31.6 |
+| shotgun | 55534  | 38.6% | 20.0 |
+| smg     | 88411  | 61.4% | 31.8 |
 
 ## 6. Hotspots
-- Deaths: 31 total | top: (468, -285)x6, (-276, -15)x6, ...
+- Deaths: 26 total | top: (468, -285)x8, (-276, -15)x4, ...
 - Stuck: 2 total | top: (-36, 195)x1, (-12, 195)x1
-- Player stats: kills median 52 / p90 57 | gold median 260 | accuracy 80%
+- Player stats: kills median 54 / p90 59 | gold median 270 | accuracy 80%
 ```
 
 内置异常检测规则（阈值均可在 `SimConfig` 调整）：
@@ -218,8 +219,7 @@ Legend: `.` low | `:` medium | `+` high | `#` peak traffic | `X` death | `!` stu
 | `weapon_imbalance` | 武器 DPS 比值 > `weapon_dps_ratio_warn`（默认 2.0） | 失衡武器对 + 建议调整的 `.tres` 字段 |
 | `too_hard` / `too_easy` | 胜率落在目标区间外 | 胜率与目标区间 + 增减敌人数值建议 |
 | `runs_end_early` | 中位存活 < 预算 35% | 过早死亡提示 |
-| 
-ondeterministic` | 同 seed 的 digest 不一致 | **CRITICAL**：未播种随机 / 时间依赖排查建议 |
+| `nondeterministic` | 同 seed 的 digest 不一致 | **CRITICAL**：未播种随机 / 时间依赖排查建议 |
 
 ---
 
