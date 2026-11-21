@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="SimConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/headless_pulse/core/sim_config.gd" id="1_cfg"]
+
+[resource]
+script = ExtResource("1_cfg")
+name = "arena_2d"
+scene_path = "res://addons/headless_pulse/examples/arena_2d/arena.tscn"
+bot_script_path = "res://addons/headless_pulse/examples/bots/kiting_shooter_bot.gd"
+seed = 1000
+runs = 50
+repeat = 1
+max_concurrency = 0
+batch_size = 0
+max_sim_time = 60.0
+player_group = "player"
+enemy_group = "enemies"
+output_dir = "res://reports"
+report_name = "arena_2d"
+baseline_path = ""
+verbose = false
+determinism_check = true
+grid_cols = 40
+grid_rows = 20
+auto_bounds = false
+bounds_min = Vector2(-480, -300)
+bounds_max = Vector2(480, 300)
+sample_interval = 0.5
+stuck_window_seconds = 3.0
+stuck_move_threshold = 6.0
+terminate_on_stuck = false
+overrides = {}
+win_rate_target_min = 0.25
+win_rate_target_max = 0.8
+stuck_rate_warn = 0.05
+weapon_dps_ratio_warn = 2.0

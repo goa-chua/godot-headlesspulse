@@ -1,0 +1,13 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Godot HeadlessPulse generated artifacts (reports are reproducible, keep the repo clean)
+/reports/
+/tmp/
+
+# Logs
+*.log
+
+# Editor-local settings (machine-specific Godot binary path)
+.vscode/

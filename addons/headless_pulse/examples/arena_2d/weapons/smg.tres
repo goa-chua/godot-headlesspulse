@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="WeaponStats" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/headless_pulse/examples/arena_2d/weapon_stats.gd" id="1_weapon"]
+
+[resource]
+script = ExtResource("1_weapon")
+id = "smg"
+display_name = "SMG"
+damage = 7.0
+fire_interval = 0.09
+bullet_speed = 950.0
+pellets = 1
+spread_radians = 0.0
+bullet_lifetime = 1.2
+bullet_radius = 6.0

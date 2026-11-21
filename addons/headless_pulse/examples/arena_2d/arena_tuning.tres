@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ArenaTuning" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/headless_pulse/examples/arena_2d/arena_tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+wave_interval = 6.0
+first_wave_delay = 1.0
+wave_base_count = 2
+wave_scale = 2
+enemy_cap = 70
+enemy_base_hp = 26.0
+enemy_hp_per_wave = 5.0
+enemy_base_speed = 75.0
+enemy_speed_per_wave = 2.0
+enemy_touch_damage = 3.0
+gold_per_kill = 5
+spawn_radius_min = 360.0
+spawn_radius_max = 450.0
+player_hp = 190.0
+player_speed = 260.0
+heal_per_kill = 2.0
