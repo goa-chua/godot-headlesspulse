@@ -5,7 +5,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)
 [![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
 [![Godot](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org)
-[![Status](https://img.shields.io/badge/status-M1--M7%20verified-brightgreen)](#路线图)
+[![Status](https://img.shields.io/badge/status-M1--M8%20verified-brightgreen)](#路线图)
 [![Release](https://img.shields.io/github/v/release/goa-chua/godot-headlesspulse?display_name=tag&sort=semver)](https://github.com/goa-chua/godot-headlesspulse/releases)
 [![Changelog](https://img.shields.io/badge/changelog-v0.1.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -299,23 +299,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot "C:\
 # PowerShell 7+ 环境可用：pwsh -File tools/verify.ps1 -Godot ...
 ```
 
-依次校验：重新导入 → **单元测试**（6 套件 / 256 断言：RNG、校验和、配置解析、卡死检测、热力图、报告统计与回归门禁）→
+依次校验：重新导入 → **单元测试**（7 套件 / 281 断言：RNG、校验和、配置解析、卡死检测、热力图、时序缓冲、报告统计与回归门禁）→
 **项目设置不变量**（`worker_pool/max_threads=1` + 编辑器插件启用）→
 **editor-only 脚本解析**（`plugin.gd` / `sim_dock.gd`，平时跑 campaign 不会加载它们）→
-**编辑器插件 headless 加载** → 同 seed 双跑确定性 → **batch=1 vs batch=3 一致性** → 卡死检测 →
+**编辑器插件 headless 加载** → 同 seed 双跑确定性 → **batch=1 vs batch=3 一致性** →
+**时序采样上限**（`--sim-timeseries-max=20` 时样本 ≤ 20 且保留最后一条）→ 卡死检测 →
 50 局吞吐（< 5s）与报告体积（< 4 KB）→ 胜率目标区间 → **A/B 回归门禁**（坏改动必须 exit 4 /
-放宽阈值必须 exit 0）→ repeat=2 确定性。全部 PASS 返回 0，失败打印 `FAIL` 并返回 1。
+放宽阈值必须 exit 0）→ repeat=2 确定性（共 **16 项检查**）。全部 PASS 返回 0，失败打印 `FAIL` 并返回 1。
 
 单元测试也可单独跑（无需框架）：
 
 ```powershell
 godot --headless --import --path .                                  # 首次/新增脚本后刷新类缓存
-godot --headless --path . -s res://tests/run_tests.gd               # 6 suites / 256 assertions
+godot --headless --path . -s res://tests/run_tests.gd               # 7 suites / 281 assertions
 ```
 
 Linux / macOS / Git Bash：`bash tools/verify.sh /path/to/godot`（CI 环境用宽松吞吐预算 `CAMPAIGN_BUDGET=120`，两套脚本都支持该环境变量）。
 
-两套启动脚本都是薄壳：**全部 15 项检查的实现只有一份** —— [tools/verify_checks.gd](tools/verify_checks.gd)
+两套启动脚本都是薄壳：**全部 16 项检查的实现只有一份** —— [tools/verify_checks.gd](tools/verify_checks.gd)
 （`godot --headless --path . -s res://tools/verify_checks.gd -- --budget=<秒>`），它自己用
 `OS.execute()` 拉起 worker 进程、逐项打印 `[PASS]/[FAIL]` 并把单项日志写到 `reports/_verify/`。
 因此 Ubuntu 与 Windows 的 CI leg 跑的是**同一份检查代码**，不会出现两边逻辑漂移。
@@ -352,6 +353,7 @@ Linux / macOS / Git Bash：`bash tools/verify.sh /path/to/godot`（CI 环境用�
 | `--sim-out=<path>` | 单局 = 输出文件；campaign = 输出目录 |
 | `--sim-grid=40x20` / `--sim-bounds=x0,y0,x1,y1` | 热力图分辨率 / 世界边界 |
 | `--sim-sample-interval=<秒>` | 时序采样周期 |
+| `--sim-timeseries-max=<n>` | 单局时序样本上限（默认 600，`0` = 不限制）；超出后确定性抽稀，长时仿真不会撑大逐局 JSON |
 | `--sim-stuck-window=<秒>` / `--sim-stuck-threshold=<单位>` | 卡死窗口 / 窗口内最小累计路程 |
 | `--sim-terminate-on-stuck` | 判定卡死立即结束该局 |
 | `--sim-set=<res>\|<prop>=<val>` | 覆写 `.tres` 属性（可重复，A/B 用） |
@@ -427,8 +429,8 @@ player { alive, hp, max_hp, final_pos[x,y] (全精度), final_pos_str, kills, go
 telemetry { events, event_log, metrics, metrics_by_tag, per_weapon {id:{damage,share}},
             damage_dealt, death {count, positions, records}, stuck {count, positions, records},
             heatmap {cols, rows, bounds_min, bounds_max, traffic[], deaths[], stucks[], max_traffic},
-            timeseries {interval, samples[{t, hp, hp_frac, alive, kills, gold, damage, dps,
-                                           enemies, bullets, weapon}]},
+            timeseries {interval, stride (抽稀倍数，1 = 未抽稀), samples[{t, hp, hp_frac, alive,
+                                            kills, gold, damage, dps, enemies, bullets, weapon}]},
             observed_bounds },
 determinism { digest (逐 tick SHA-256), samples, rng_draws, rng_seed },
 overrides, replay
@@ -493,6 +495,7 @@ addons/headless_pulse/
 │   └── stuck_detector.gd           # 滑动窗口「累计路程」卡死检测
 ├── telemetry/
 │   ├── telemetry_collector.gd      # Autoload SimTelemetry（非仿真零开销）
+│   ├── timeseries_buffer.gd        # 有界、确定性的逐局时序缓冲
 │   ├── spatial_heatmap.gd          # 栅格化 + ASCII 渲染
 │   └── report_synthesizer.gd       # 聚合/分位数/异常检测/A-B diff/markdown
 ├── cli/run_sim.gd                  # `godot -s` campaign 入口
@@ -501,7 +504,7 @@ addons/headless_pulse/
     ├── arena_2d/                   # 自包含靶场 + 平衡数值 .tres + 武器 .tres
     └── bots/                       # kiting_shooter_bot.gd / wall_pusher_bot.gd
 sim_configs/                        # arena_2d.tres / stuck_test.tres
-tools/                              # verify.ps1 / run_campaign.ps1
+tools/                              # verify_checks.gd（单一检查实现）+ verify.sh/.ps1 薄启动器 + run_campaign.ps1
 ```
 
 ### 关键设计决策
@@ -551,6 +554,11 @@ Windows / Steam 版 Godot 是 GUI 子系统程序，PowerShell 不会等待。�
 本机实测 50 局 **≈1.9 s**（未优化时 6.5 s）。共享机器上的其他负载（浏览器、杀软扫描、编辑器）
 仍会影响墙钟，可通过 `--sim-jobs` 适配物理核数。
 
+**Q：仿真时长很长（比如 10 分钟/局），逐局 JSON 会不会爆？**
+不会。逐局时序采样默认上限 600 条（`--sim-timeseries-max`，`0` = 不限制）：超过上限后按固定规则
+**确定性抽稀**（收集中内存最多约 2× 上限），始终保留最后一条样本，`telemetry.timeseries.stride`
+记录当前抽稀倍数；事件日志与卡死记录也有各自上限。
+
 **Q：非仿真模式下插件有性能开销吗？**
 没有实际开销：`SimRuntime` 在非 `--sim-mode` 时 `set_process(false)/set_physics_process(false)`，
 `SimTelemetry` 每个公开方法首行 `if not _active: return`。
@@ -582,8 +590,9 @@ Windows / Steam 版 Godot 是 GUI 子系统程序，PowerShell 不会等待。�
 | M3 | 批量多进程调度、统计聚合、`.tres` 覆写 A/B | ✅ 已实现并验证 |
 | M4 | 编辑器 Dock（运行 / 进度 / 预览 / 复制 / 复现 Seed） | ✅ 已实现并验证 |
 | M5 | CLI 自检（`--sim-help` / `--sim-dry-run` / 未知参数告警）、CI 硬化（脚本解析、插件加载、设置不变量）、A/B 回归门禁（exit 4） | ✅ 已实现并验证 |
-| M6 | 单元测试（6 套件 / 256 断言，接入两套验收脚本；同时修掉 `SimRNG` 组合方法误用全局 RNG 的潜在确定性 bug） | ✅ 已实现并验证 |
-| M7 | 验收逻辑单一来源：15 项检查全部收敛到 `tools/verify_checks.gd`，`verify.sh` / `verify.ps1` 变成薄启动器（Linux/Windows 不再漂移） | ✅ 已实现并验证 |
+| M6 | 单元测试（7 套件 / 281 断言，接入验收；同时修掉 `SimRNG` 组合方法误用全局 RNG 的潜在确定性 bug） | ✅ 已实现并验证 |
+| M7 | 验收逻辑单一来源：16 项检查全部收敛到 `tools/verify_checks.gd`，`verify.sh` / `verify.ps1` 变成薄启动器（Linux/Windows 不再漂移） | ✅ 已实现并验证 |
+| M8 | 长时仿真有界遥测：`SimTimeseriesBuffer` + `--sim-timeseries-max`（默认 600，确定性抽稀、保留最后一条，`timeseries.stride` 记录抽稀倍数） | ✅ 已实现并验证 |
 | CI | GitHub Actions 矩阵：ubuntu + windows × Godot 4.7.2，另加最新稳定版参考 leg；跑验收、上传报告 | ✅ 已实现并验证 |
 | 发布 | `v0.1.0` tag + GitHub Release + [CHANGELOG.md](CHANGELOG.md) + Dependabot 自动升级 Actions | ✅ 已完成 |
 | 后续 | 2D/3D 多场景示例、报告 diff 可视化、长时仿真 Streaming | 💡 计划中 |

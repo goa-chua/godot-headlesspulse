@@ -108,6 +108,11 @@ Four pitfalls that already caused bugs here — keep them in mind:
     thin launchers (binary resolution + waiting for the GUI-subsystem binary) only.
     Add or change a check there, never in the launchers, so Linux, macOS and
     Windows cannot drift apart.
+12. **Bound every growing buffer.** Long simulations must not blow up per-run JSON
+    or memory: events (`MAX_EVENT_DETAILS`), stuck records (`MAX_STUCK_RECORDS`) and
+    time-series samples (`SimTimeseriesBuffer`, `--sim-timeseries-max`) are capped,
+    and the caps decimate deterministically. Any new unbounded list needs the same
+    treatment before it lands.
 
 ## Directory layout
 
@@ -126,6 +131,7 @@ addons/headless_pulse/
 │   └── stuck_detector.gd           # path-length sliding-window stuck detection
 ├── telemetry/
 │   ├── telemetry_collector.gd      # Autoload "SimTelemetry" (zero-cost when inactive)
+│   ├── timeseries_buffer.gd        # bounded, deterministic per-run sample buffer
 │   ├── spatial_heatmap.gd          # grid rasterizer + ASCII renderer
 │   └── report_synthesizer.gd       # aggregation, percentile stats, anomalies, A/B diff, markdown
 ├── cli/run_sim.gd                  # `godot -s ... run_sim.gd` campaign entry point
@@ -162,8 +168,8 @@ telemetry {events, event_log, metrics, metrics_by_tag, per_weapon {id: {damage, 
            damage_dealt, death {count, positions, records}, stuck {count, positions, records},
            heatmap {cols, rows, bounds_min, bounds_max, traffic[], deaths[], stucks[],
                     max_traffic, total_samples},
-           timeseries {interval, samples [{t, hp, hp_frac, alive, kills, gold, damage, dps,
-                                           enemies, bullets, weapon}]},
+           timeseries {interval, stride (decimation factor, 1 = none), samples [{t, hp, hp_frac,
+                                           alive, kills, gold, damage, dps, enemies, bullets, weapon}]},
            observed_bounds, samples},
 determinism {digest (SHA-256 of every tick's state), samples, rng_draws, rng_seed},
 overrides, replay
@@ -232,9 +238,9 @@ Options (authoritative list + defaults: `--sim-help`, source `SimConfig.help_tex
 --sim-seed --sim-runs --sim-repeat --sim-jobs --sim-batch --sim-max-time --sim-out
 --sim-report-name --sim-tag --sim-baseline --sim-verbose --sim-no-determinism-check
 --sim-player-group --sim-enemy-group --sim-grid --sim-bounds --sim-sample-interval
---sim-stuck-window --sim-stuck-threshold --sim-terminate-on-stuck --sim-win-rate-min
---sim-win-rate-max --sim-set --sim-replay --sim-fail-on-regression --sim-gate-win-drop
---sim-gate-survival-drop --sim-gate-fail-on-new-critical`.
+--sim-timeseries-max --sim-stuck-window --sim-stuck-threshold --sim-terminate-on-stuck
+--sim-win-rate-min --sim-win-rate-max --sim-set --sim-replay --sim-fail-on-regression
+--sim-gate-win-drop --sim-gate-survival-drop --sim-gate-fail-on-new-critical`.
 
 Unknown `--sim-*` options print a warning instead of being ignored. Campaign exit
 codes: `0` ok, `1` campaign failed, `2` bad arguments/config, `3` worker start
@@ -281,10 +287,10 @@ the required legs at another engine build (e.g. to reproduce a regression).
 
 It re-imports the project and asserts:
 
-1. **Unit tests** — `tests/run_tests.gd` runs 6 framework-free suites (256
+1. **Unit tests** — `tests/run_tests.gd` runs 7 framework-free suites (281
    assertions): `SimRNG`, `SimChecksum`, `SimConfig` parsing/validation,
-   `StuckDetector`, `SpatialHeatmap` rasterization and `ReportSynthesizer`
-   statistics/regression gate. Run them standalone with
+   `StuckDetector`, `SpatialHeatmap` rasterization, `SimTimeseriesBuffer` capping
+   and `ReportSynthesizer` statistics/regression gate. Run them standalone with
    `godot --headless -s res://tests/run_tests.gd` (after `--import`).
 2. **Project settings invariants** — `worker_pool/max_threads=1` and the editor
    plugin enabled (`[editor_plugins]`), so the thread-pool cap cannot regress silently.
@@ -295,16 +301,19 @@ It re-imports the project and asserts:
    dock without `SCRIPT ERROR`.
 5. **Determinism** — same seed twice → identical `digest`, `final_pos`, `kills`, `hp`;
    `--sim-batch=1` vs `--sim-batch=3` digests match too.
-6. **Stuck detection** — `wall_pusher_bot` ends with `end_reason=stuck` near the trap,
+6. **Timeseries cap** — a single run with `--sim-timeseries-max=20` keeps exactly
+   ≤ 20 samples, reports the cap count, and still includes the final sample.
+7. **Stuck detection** — `wall_pusher_bot` ends with `end_reason=stuck` near the trap,
    and `report.md` contains a `!` hotspot.
-7. **Throughput** — 50 runs of 60 simulated seconds complete in < 5 s (measured ~1.9 s),
+8. **Throughput** — 50 runs of 60 simulated seconds complete in < 5 s (measured ~1.9 s),
    `report.md` < 4 KB, win rate inside the configured target band.
-8. **Regression gate** — a clearly-worse A/B variant (`smg damage=1`) makes
+9. **Regression gate** — a clearly-worse A/B variant (`smg damage=1`) makes
    `--sim-fail-on-regression` exit 4, and the same variant passes with relaxed limits.
-9. **Repeat determinism** — `--sim-repeat=2` campaign reports `identical = true`
-   with zero mismatches.
+10. **Repeat determinism** — `--sim-repeat=2` campaign reports `identical = true`
+    with zero mismatches.
 
-Exit code 0 = all checks pass. Any failing check prints `FAIL` and returns 1.
+Exit code 0 = all checks pass (16 checks total). Any failing check prints `FAIL`
+and returns 1.
 
 ## Release checklist
 
@@ -343,15 +352,21 @@ Released: `v0.1.0` (2026-11-22) — see [CHANGELOG.md](CHANGELOG.md).
   exceeds the allowed win-rate/survival drop or adds CRITICAL anomalies (exit
   codes 0/1/2/3/4 documented in the CLI help).
 - **M6 — unit test suite + latent bug fix**: done. Framework-free test runner
-  (`tests/run_tests.gd`, 6 suites / 256 assertions) wired into both verify scripts
-  (now 15 acceptance checks). The `SimRNG` suite caught a latent determinism bug:
-  composite helpers called the global `@GlobalScope` RNG instead of the seeded
-  instance; they now use `self.*` and are covered by regression assertions.
-- **M7 — single-source acceptance runner**: done. All 15 checks moved into
+  (`tests/run_tests.gd`, now 7 suites / 281 assertions) wired into the acceptance
+  runner. The `SimRNG` suite caught a latent determinism bug: composite helpers
+  called the global `@GlobalScope` RNG instead of the seeded instance; they now use
+  `self.*` and are covered by regression assertions.
+- **M7 — single-source acceptance runner**: done. All checks moved into
   `tools/verify_checks.gd` (one cross-platform implementation; child Godot processes
   spawned through `OS.execute()`, per-check logs under `reports/_verify/`).
   `tools/verify.sh` / `tools/verify.ps1` are now ~40-line launchers, so the Linux
   and Windows CI legs cannot drift; both print the same check names and messages.
+- **M8 — bounded telemetry for long sessions**: done. `SimTimeseriesBuffer` caps the
+  per-run time series (`--sim-timeseries-max`, default 600, 0 = unlimited) and
+  decimates deterministically while collecting, so long simulations keep bounded
+  memory and per-run JSON; the final sample is always kept and `timeseries.stride`
+  reports the effective spacing. Verified by unit tests plus a new acceptance check
+  (`--sim-timeseries-max=20` keeps ≤ 20 samples including the last one).
 
 ## How to onboard a real game (5 minutes)
 

@@ -5,7 +5,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)
 [![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
 [![Godot](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org)
-[![Status](https://img.shields.io/badge/status-M1--M7%20verified-brightgreen)](#roadmap)
+[![Status](https://img.shields.io/badge/status-M1--M8%20verified-brightgreen)](#roadmap)
 [![Release](https://img.shields.io/github/v/release/goa-chua/godot-headlesspulse?display_name=tag&sort=semver)](https://github.com/goa-chua/godot-headlesspulse/releases)
 [![Changelog](https://img.shields.io/badge/changelog-v0.1.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -302,25 +302,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot "C:\
 # With PowerShell 7+: pwsh -File tools/verify.ps1 -Godot ...
 ```
 
-It re-imports the project, then runs the **unit tests** (6 suites / 256 assertions: RNG, checksum,
-config parsing, stuck detection, heatmap rasterizer, report statistics and the regression gate),
-checks **project-settings invariants** (`worker_pool/max_threads=1` plus the editor plugin enabled),
-**parses the editor-only scripts** (`plugin.gd` / `sim_dock.gd`, never loaded by gameplay runs),
-**loads the editor plugin headless**, same-seed determinism, **batch=1 vs batch=3 digests**, stuck
-detection, 50-run throughput (< 5 s) and report size (< 4 KB), the win-rate target band, the
-**A/B regression gate** (a worse variant must exit 4, relaxed limits must exit 0) and
-repeat-determinism. Exit code 0 means all checks passed; failures print `FAIL` and return 1.
+It re-imports the project, then runs the **unit tests** (7 suites / 281 assertions: RNG, checksum,
+config parsing, stuck detection, heatmap rasterizer, timeseries buffer, report statistics and the
+regression gate), checks **project-settings invariants** (`worker_pool/max_threads=1` plus the editor
+plugin enabled), **parses the editor-only scripts** (`plugin.gd` / `sim_dock.gd`, never loaded by
+gameplay runs), **loads the editor plugin headless**, same-seed determinism, **batch=1 vs batch=3
+digests**, the **timeseries cap** (`--sim-timeseries-max=20` keeps ≤ 20 samples including the last
+one), stuck detection, 50-run throughput (< 5 s) and report size (< 4 KB), the win-rate target band,
+the **A/B regression gate** (a worse variant must exit 4, relaxed limits must exit 0) and
+repeat-determinism. Exit code 0 means all checks passed (16 checks); failures print `FAIL` and return 1.
 
 The unit tests also run standalone (no framework):
 
 ```powershell
 godot --headless --import --path .                                  # refresh the class cache once
-godot --headless --path . -s res://tests/run_tests.gd               # 6 suites / 256 assertions
+godot --headless --path . -s res://tests/run_tests.gd               # 7 suites / 281 assertions
 ```
 
 Linux / macOS / Git Bash: `bash tools/verify.sh /path/to/godot` (CI uses a relaxed `CAMPAIGN_BUDGET=120`; both scripts honour that variable).
 
-Both launchers are thin: **all 15 checks live in one implementation**,
+Both launchers are thin: **all 16 checks live in one implementation**,
 [tools/verify_checks.gd](tools/verify_checks.gd)
 (`godot --headless --path . -s res://tools/verify_checks.gd -- --budget=<seconds>`).
 It spawns the worker processes itself through `OS.execute()`, prints one
@@ -360,6 +361,7 @@ Quote only numbers from the report. Do not invent metrics.
 | `--sim-out=<path>` | worker: exact result file; campaign: output directory |
 | `--sim-grid=40x20` / `--sim-bounds=x0,y0,x1,y1` | heatmap resolution / world bounds |
 | `--sim-sample-interval=<sec>` | time-series sampling period |
+| `--sim-timeseries-max=<n>` | per-run sample cap (default 600, `0` = unlimited); samples are deterministically decimated past the cap so long runs keep per-run JSON small |
 | `--sim-stuck-window=<sec>` / `--sim-stuck-threshold=<units>` | stuck window / minimum path length inside it |
 | `--sim-terminate-on-stuck` | end a run as soon as it is stuck |
 | `--sim-set=<res>\|<prop>=<val>` | override a `.tres` property (repeatable, for A/B) |
@@ -439,8 +441,8 @@ player { alive, hp, max_hp, final_pos[x,y] (full precision), final_pos_str, kill
 telemetry { events, event_log, metrics, metrics_by_tag, per_weapon {id:{damage,share}},
             damage_dealt, death {count, positions, records}, stuck {count, positions, records},
             heatmap {cols, rows, bounds_min, bounds_max, traffic[], deaths[], stucks[], max_traffic},
-            timeseries {interval, samples[{t, hp, hp_frac, alive, kills, gold, damage, dps,
-                                           enemies, bullets, weapon}]},
+            timeseries {interval, stride (decimation factor, 1 = none), samples[{t, hp, hp_frac,
+                                            alive, kills, gold, damage, dps, enemies, bullets, weapon}]},
             observed_bounds },
 determinism { digest (per-tick SHA-256), samples, rng_draws, rng_seed },
 overrides, replay
@@ -505,6 +507,7 @@ addons/headless_pulse/
 │   └── stuck_detector.gd           # sliding-window path-length stuck detection
 ├── telemetry/
 │   ├── telemetry_collector.gd      # autoload SimTelemetry (zero-cost when inactive)
+│   ├── timeseries_buffer.gd        # bounded, deterministic per-run sample buffer
 │   ├── spatial_heatmap.gd          # grid rasterizer + ASCII renderer
 │   └── report_synthesizer.gd       # aggregation, percentiles, anomalies, A/B diff, markdown
 ├── cli/run_sim.gd                  # `godot -s` campaign entry point
@@ -513,7 +516,7 @@ addons/headless_pulse/
     ├── arena_2d/                   # self-contained arena + tuning .tres + weapon .tres
     └── bots/                       # kiting_shooter_bot.gd / wall_pusher_bot.gd
 sim_configs/                        # arena_2d.tres / stuck_test.tres
-tools/                              # verify.ps1 / run_campaign.ps1
+tools/                              # verify_checks.gd (single-source checks) + verify.sh/.ps1 launchers + run_campaign.ps1
 ```
 
 ### Key design decisions
@@ -575,6 +578,12 @@ boot. Both are on by default: measured 50 runs in **≈1.9 s** here (6.5 s unopt
 on a shared machine (browser, antivirus scans, editor) still affect wall time; size `--sim-jobs` to
 the physical core count.
 
+**Does a very long simulation (e.g. 10 simulated minutes per run) blow up the per-run JSON?**
+No. The time series is capped at 600 samples per run by default (`--sim-timeseries-max`, `0` =
+unlimited): past the cap it is **deterministically decimated** while collecting (memory bounded at
+about 2× the cap), the last sample is always kept and `telemetry.timeseries.stride` records the
+current decimation factor. Event logs and stuck records have their own caps.
+
 **Does the addon cost anything in normal (non-simulation) runs?**
 No meaningful cost: `SimRuntime` calls `set_process(false)/set_physics_process(false)` and every
 public `SimTelemetry` method starts with `if not _active: return`.
@@ -611,8 +620,9 @@ regressions early. On any CI system you can also run the CLI directly with
 | M3 | Batched multi-process scheduler, statistical aggregation, `.tres` override A/B | ✅ implemented and verified |
 | M4 | Editor dock (run / progress / preview / copy / replay seed) | ✅ implemented and verified |
 | M5 | CLI self-check (`--sim-help` / `--sim-dry-run` / unknown-option warnings), CI hardening (script parse, plugin load, settings invariants), A/B regression gate (exit 4) | ✅ implemented and verified |
-| M6 | Unit tests (6 suites / 256 assertions, wired into both verify scripts; also fixed the latent `SimRNG` composite-helper bug that bypassed the seeded RNG) | ✅ implemented and verified |
-| M7 | Single-source acceptance runner: all 15 checks in `tools/verify_checks.gd`, `verify.sh` / `verify.ps1` reduced to thin launchers (Linux/Windows cannot drift) | ✅ implemented and verified |
+| M6 | Unit tests (7 suites / 281 assertions, wired into the acceptance runner; also fixed the latent `SimRNG` composite-helper bug that bypassed the seeded RNG) | ✅ implemented and verified |
+| M7 | Single-source acceptance runner: all 16 checks in `tools/verify_checks.gd`, `verify.sh` / `verify.ps1` reduced to thin launchers (Linux/Windows cannot drift) | ✅ implemented and verified |
+| M8 | Bounded telemetry for long sessions: `SimTimeseriesBuffer` + `--sim-timeseries-max` (default 600, deterministic decimation, last sample kept, `timeseries.stride` reports the factor) | ✅ implemented and verified |
 | CI | GitHub Actions matrix: ubuntu + windows on Godot 4.7.2, plus an advisory latest-stable leg; runs acceptance checks and uploads reports | ✅ implemented and verified |
 | Release | `v0.1.0` tag + GitHub Release + [CHANGELOG.md](CHANGELOG.md) + Dependabot for GitHub Actions | ✅ done |
 | Next | 2D/3D multi-scene examples, report diff visualization, long-session streaming | 💡 planned |

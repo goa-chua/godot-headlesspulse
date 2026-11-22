@@ -52,6 +52,7 @@ func _initialize() -> void:
 	_check_editor_plugin()
 	_check_determinism()
 	_check_batch_independence()
+	_check_timeseries_cap()
 	var stuck_campaign: Dictionary = _check_stuck_detection()
 	_check_anomalies(stuck_campaign)
 	var campaign: Dictionary = _check_campaign()
@@ -201,6 +202,26 @@ func _check_anomalies(report: Dictionary) -> void:
 			"%d anomaly entry(ies) in the stuck campaign" % count)
 
 
+func _check_timeseries_cap() -> void:
+	var result: Dictionary = _run("timeseries_cap", _single_run_args(4242,
+			"res://reports/_verify/timeseries_cap.json", 0, ["--sim-timeseries-max=20"]))
+	var run_data: Dictionary = _read_json("res://reports/_verify/timeseries_cap.json")
+	var samples: Array = _array_at(run_data, ["telemetry", "timeseries", "samples"])
+	var reported_count: int = _int_at(run_data, ["telemetry", "samples"])
+	var sim_time: float = _float_at(run_data, ["sim_time"])
+	var last_t: float = 0.0
+	if not samples.is_empty():
+		var last: Variant = samples[samples.size() - 1]
+		if last is Dictionary:
+			last_t = float((last as Dictionary).get("t", 0.0))
+	var ok: bool = int(result["exit"]) == 0 and samples.size() >= 2 \
+			and samples.size() <= 20 and reported_count == samples.size() \
+			and last_t > 0.0 and sim_time - last_t <= 2.0
+	_check("timeseries cap", ok,
+			"%d samples (cap 20), last t=%.1fs of %.1fs" % [samples.size(), last_t, sim_time],
+			result if not ok else {})
+
+
 func _check_campaign() -> Dictionary:
 	var result: Dictionary = _run("campaign",
 			_campaign_args(50, 1000, "res://reports/_verify/campaign"))
@@ -288,7 +309,8 @@ func _run(name: String, args: PackedStringArray) -> Dictionary:
 	return {"exit": exit_code, "text": text, "log": log_path, "seconds": elapsed}
 
 
-func _single_run_args(seed_value: int, out_path: String, batch_size: int = 0) -> PackedStringArray:
+func _single_run_args(seed_value: int, out_path: String, batch_size: int = 0,
+		extra: Array = []) -> PackedStringArray:
 	var args: PackedStringArray = PackedStringArray(["--path", _root])
 	args.append_array(BATCH_FLAGS)
 	args.append(SCENE)
@@ -299,6 +321,7 @@ func _single_run_args(seed_value: int, out_path: String, batch_size: int = 0) ->
 	args.append("--sim-out=" + out_path)
 	if batch_size > 0:
 		args.append("--sim-batch=%d" % batch_size)
+	args.append_array(extra)
 	return args
 
 

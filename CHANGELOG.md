@@ -10,11 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Unit test suite** — framework-free runner (`tests/run_tests.gd` + `tests/cases/*`,
-  `HpTestCase` assertion base) with 6 suites / 256 assertions covering `SimRNG`,
+  `HpTestCase` assertion base) with 7 suites / 281 assertions covering `SimRNG`,
   `SimChecksum`, `SimConfig` parsing/validation, `StuckDetector`,
-  `SpatialHeatmap` rasterization and `ReportSynthesizer` statistics + regression
-  gate. Run with `godot --headless --path . -s res://tests/run_tests.gd`; both
-  verify scripts run it automatically (now 15 acceptance checks).
+  `SpatialHeatmap` rasterization, `SimTimeseriesBuffer` capping and
+  `ReportSynthesizer` statistics + regression gate. Run with
+  `godot --headless --path . -s res://tests/run_tests.gd`; the acceptance runner
+  runs it automatically.
+- **Bounded time series for long sessions** — `SimTimeseriesBuffer` caps the
+  per-run samples (`--sim-timeseries-max`, default 600, `0` = unlimited) and
+  decimates deterministically while collecting (memory bounded at ~2× the cap),
+  always keeping the final sample and exposing `telemetry.timeseries.stride`.
+  Long simulations no longer grow the per-run JSON without bound; covered by unit
+  tests and a new acceptance check (`--sim-timeseries-max=20` keeps ≤ 20 samples).
 
 ### Changed
 
@@ -22,7 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tools/verify_checks.gd` (child Godot runs through `OS.execute()`, per-check logs
   under `reports/_verify/`). `tools/verify.sh` and `tools/verify.ps1` are thin
   launchers, so the Linux and Windows CI legs execute identical logic and cannot
-  drift. Same 15 checks and behaviour; `CAMPAIGN_BUDGET` is still the only knob.
+  drift. Same behaviour; the suite is now 16 checks (unit tests + timeseries cap
+  added); `CAMPAIGN_BUDGET` is still the only knob.
 
 ### Fixed
 

@@ -13,6 +13,7 @@ const SUITES: Array = [
 	"res://tests/cases/test_sim_config.gd",
 	"res://tests/cases/test_stuck_detector.gd",
 	"res://tests/cases/test_spatial_heatmap.gd",
+	"res://tests/cases/test_timeseries_buffer.gd",
 	"res://tests/cases/test_report_synthesizer.gd",
 ]
 

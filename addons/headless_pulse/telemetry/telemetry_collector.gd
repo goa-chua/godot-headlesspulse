@@ -7,7 +7,8 @@ extends Node
 ##   - structured events (death / kill / stuck / custom),
 ##   - metrics (optionally tagged, e.g. per weapon),
 ##   - sampled positions for the spatial heatmap,
-##   - a fixed-interval time series (HP / DPS / gold / enemy count),
+##   - a fixed-interval time series (HP / DPS / gold / enemy count), bounded by
+##     `--sim-timeseries-max` so long sessions stay small (see SimTimeseriesBuffer),
 ##   - stuck episodes from [StuckDetector].
 ##
 ## Game code only needs the two public entry points:
@@ -34,7 +35,7 @@ var _death_positions: PackedVector2Array = PackedVector2Array()
 var _stuck_positions: PackedVector2Array = PackedVector2Array()
 var _death_records: Array[Dictionary] = []
 var _stuck_records: Array[Dictionary] = []
-var _timeseries: Array[Dictionary] = []
+var _timeseries: SimTimeseriesBuffer = SimTimeseriesBuffer.new()
 var _dps_history: Array[Dictionary] = []
 var _stuck_detector: StuckDetector = null
 var _sample_accum: float = 0.0
@@ -62,7 +63,7 @@ func begin(runtime: Node, config: SimConfig, rng: SimRNG) -> void:
 	_stuck_positions = PackedVector2Array()
 	_death_records.clear()
 	_stuck_records.clear()
-	_timeseries.clear()
+	_timeseries = SimTimeseriesBuffer.new(config.timeseries_max_samples)
 	_dps_history.clear()
 	_sample_accum = 0.0
 	_total_damage = 0.0
@@ -212,7 +213,6 @@ func _sample(time: float, player: Node, enemy_count: int, bullet_count: int) -> 
 		"weapon": weapon,
 	})
 
-
 ## Build the telemetry block of the run result (called once at end of run).
 func finish() -> Dictionary:
 	if not _active:
@@ -249,6 +249,7 @@ func finish() -> Dictionary:
 			"share": snappedf(value / total, 0.0001) if total > 0.0 else 0.0,
 		}
 
+	var curve_samples: Array[Dictionary] = _timeseries.snapshot()
 	return {
 		"events": _events.duplicate(),
 		"event_log": _event_details.duplicate(true),
@@ -269,13 +270,14 @@ func finish() -> Dictionary:
 		"heatmap": grid.to_dict(),
 		"timeseries": {
 			"interval": _config.sample_interval,
-			"samples": _timeseries.duplicate(true),
+			"stride": _timeseries.stride,
+			"samples": curve_samples,
 		},
 		"observed_bounds": {
 			"min": [snappedf(_observed_min.x, 0.1), snappedf(_observed_min.y, 0.1)] if _has_last_pos else [0.0, 0.0],
 			"max": [snappedf(_observed_max.x, 0.1), snappedf(_observed_max.y, 0.1)] if _has_last_pos else [0.0, 0.0],
 		},
-		"samples": _timeseries.size(),
+		"samples": curve_samples.size(),
 	}
 
 

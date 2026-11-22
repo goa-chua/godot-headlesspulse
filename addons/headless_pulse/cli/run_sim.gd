@@ -78,9 +78,9 @@ func _print_plan(config: SimConfig) -> void:
 			config.resolved_concurrency(), config.resolved_batch_size(), config.max_sim_time])
 	print("[headless_pulse]   output   : %s/%s.{json,md}" % [
 			config.resolved_output_dir(), config.report_name])
-	print("[headless_pulse]   telemetry: grid=%dx%d sample_interval=%.2fs stuck_window=%.2fs"
+	print("[headless_pulse]   telemetry: grid=%dx%d sample_interval=%.2fs timeseries_max=%d stuck_window=%.2fs"
 			% [config.grid_cols, config.grid_rows, config.sample_interval,
-			config.stuck_window_seconds])
+			config.timeseries_max_samples, config.stuck_window_seconds])
 	print("[headless_pulse]   baseline : %s" % (
 			"(none)" if config.baseline_path.is_empty() else config.baseline_path))
 	print("[headless_pulse]   gate     : %s (win drop %.2f, survival drop %.1fs, new critical=%s)"

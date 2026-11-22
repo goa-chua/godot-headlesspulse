@@ -23,7 +23,7 @@ const KNOWN_OPTIONS: Array = [
 	"sim-report-name", "sim-baseline", "sim-verbose", "sim-no-determinism-check",
 	"sim-player-group", "sim-enemy-group",
 	"sim-grid", "sim-bounds", "sim-sample-interval", "sim-stuck-window",
-	"sim-stuck-threshold", "sim-terminate-on-stuck",
+	"sim-stuck-threshold", "sim-terminate-on-stuck", "sim-timeseries-max",
 	"sim-win-rate-min", "sim-win-rate-max", "sim-set", "sim-replay",
 	"sim-fail-on-regression", "sim-gate-win-drop", "sim-gate-survival-drop",
 	"sim-gate-fail-on-new-critical",
@@ -59,6 +59,9 @@ const KNOWN_OPTIONS: Array = [
 @export var bounds_min: Vector2 = Vector2(-480.0, -300.0)
 @export var bounds_max: Vector2 = Vector2(480.0, 300.0)
 @export var sample_interval: float = 0.5
+## Per-run time-series sample cap (0 = unlimited). Long runs are decimated
+## deterministically so the per-run JSON stays small; see SimTimeseriesBuffer.
+@export var timeseries_max_samples: int = 600
 @export var stuck_window_seconds: float = 3.0
 @export var stuck_move_threshold: float = 6.0
 @export var terminate_on_stuck: bool = false
@@ -165,6 +168,7 @@ Telemetry
   --sim-grid=<cols>x<rows>          ASCII heatmap resolution (4..400 per axis)
   --sim-bounds=<x0,y0,x1,y1>        world bounds rasterized by the heatmap
   --sim-sample-interval=<sec>       time-series sampling period
+  --sim-timeseries-max=<int>        per-run sample cap, 0 = unlimited (default 600)
   --sim-stuck-window=<sec>          stuck detection window
   --sim-stuck-threshold=<px>        minimum displacement inside that window
   --sim-terminate-on-stuck          end a run as soon as it is stuck
@@ -250,6 +254,8 @@ func apply_opts(opts: Dictionary) -> PackedStringArray:
 			errors.append("--sim-bounds expects <x0,y0,x1,y1>, got '%s'" % str(opts["sim-bounds"]))
 	if opts.has("sim-sample-interval"):
 		sample_interval = _to_float(opts["sim-sample-interval"], sample_interval)
+	if opts.has("sim-timeseries-max"):
+		timeseries_max_samples = _to_int(opts["sim-timeseries-max"], timeseries_max_samples)
 	if opts.has("sim-stuck-window"):
 		stuck_window_seconds = _to_float(opts["sim-stuck-window"], stuck_window_seconds)
 	if opts.has("sim-stuck-threshold"):
@@ -316,6 +322,8 @@ func validate() -> PackedStringArray:
 		errors.append("grid must be within 4..400 cells per axis (got %dx%d)" % [grid_cols, grid_rows])
 	if sample_interval <= 0.0:
 		errors.append("sample_interval must be > 0 (got %f)" % sample_interval)
+	if timeseries_max_samples < 0:
+		errors.append("timeseries_max_samples must be >= 0 (got %d)" % timeseries_max_samples)
 	if stuck_window_seconds <= 0.0:
 		errors.append("stuck_window_seconds must be > 0 (got %f)" % stuck_window_seconds)
 	if stuck_move_threshold < 0.0:
@@ -351,6 +359,7 @@ func to_dict() -> Dictionary:
 		"bounds_min": [bounds_min.x, bounds_min.y],
 		"bounds_max": [bounds_max.x, bounds_max.y],
 		"sample_interval": sample_interval,
+		"timeseries_max_samples": timeseries_max_samples,
 		"stuck_window_seconds": stuck_window_seconds,
 		"stuck_move_threshold": stuck_move_threshold,
 		"terminate_on_stuck": terminate_on_stuck,
