@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Unit test suite** — framework-free runner (`tests/run_tests.gd` + `tests/cases/*`,
+  `HpTestCase` assertion base) with 6 suites / 256 assertions covering `SimRNG`,
+  `SimChecksum`, `SimConfig` parsing/validation, `StuckDetector`,
+  `SpatialHeatmap` rasterization and `ReportSynthesizer` statistics + regression
+  gate. Run with `godot --headless --path . -s res://tests/run_tests.gd`; both
+  verify scripts run it automatically (now 15 acceptance checks).
+
+### Fixed
+
+- `SimRNG` composite helpers (`rand_bool`, `rand_vec2`, `rand_unit_vec2`, `pick`,
+  `shuffle`, `rand_range_weighted`) called GDScript's global built-ins instead of
+  the seeded instance methods: unqualified `randf()` / `randf_range()` /
+  `randi_range()` resolve to `@GlobalScope`, bypassing the per-run RNG (a latent
+  determinism bug caught by the new tests). The helpers now call through `self.*`
+  and are covered by regression assertions.
+
 ## [0.1.0] - 2026-11-22
 
 First public release: a Godot 4.7 addon that runs N headless, deterministic,

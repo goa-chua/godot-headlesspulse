@@ -5,11 +5,11 @@
 #   CAMPAIGN_BUDGET=120 bash tools/verify.sh /path/to/godot   # slow/shared CI runners
 #   GODOT_BIN=/path/to/godot bash tools/verify.sh
 #
-# Mirrors tools/verify.ps1: re-import the project, then assert project-settings
-# invariants, parse the editor-only scripts, load the editor plugin headless,
-# prove same-seed determinism and batch-size independence, check stuck detection,
-# campaign throughput/report budget/balance band, the A/B regression gate and
-# repeat determinism. Exit code 0 = all checks passed.
+# Mirrors tools/verify.ps1: re-import the project, then run the unit-test suites,
+# assert project-settings invariants, parse the editor-only scripts, load the
+# editor plugin headless, prove same-seed determinism and batch-size independence,
+# check stuck detection, campaign throughput/report budget/balance band, the A/B
+# regression gate and repeat determinism. Exit code 0 = all checks passed.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -87,6 +87,16 @@ if run_godot import --headless --import --path .; then
     pass "import project" "exit=0"
 else
     fail "import project" "exit=$?"
+    show_log_tail
+fi
+
+# --- 0a. unit tests --------------------------------------------------------
+# Fast engine-native suites (no framework): RNG, checksum, config parsing,
+# stuck detection, heatmap rasterizer, report statistics and the regression gate.
+if run_godot unit_tests --headless --path . -s res://tests/run_tests.gd; then
+    pass "unit tests" "$(grep -E '^unit tests:' "$LAST_LOG" | tail -n 1)"
+else
+    fail "unit tests" "$(grep -E '^\[FAIL\]' "$LAST_LOG" | head -n 2 | tr '\n' ' ')"
     show_log_tail
 fi
 

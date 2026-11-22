@@ -47,12 +47,18 @@ wall-clock dependence.
 | `OS.get_process_exit_code` / `OS.is_process_running` | available → orchestrator reaps workers |
 | `user://` writes | can be blocked on locked-down machines; **write to `res://`** |
 
-Three pitfalls that already caused bugs here — keep them in mind:
+Four pitfalls that already caused bugs here — keep them in mind:
 
 - **Steam/Windows Godot is a GUI-subsystem binary.** Plain PowerShell `& godot ...`
   returns immediately and `$LASTEXITCODE` is empty. Wrap calls in
   `cmd /c "godot ... > log 2>&1"` (cmd waits) or use a process object with
   `WaitForExit()`. All scripts in `tools/` do this.
+- **Unqualified calls resolve to `@GlobalScope`, not to your own method.**
+  `SimRNG`'s composite helpers called `randf()`/`randf_range()`/`randi_range()`
+  unqualified, which silently used the engine's global RNG instead of the seeded
+  instance (a latent determinism bug caught by `tests/cases/test_sim_rng.gd`).
+  When a method shadows a built-in function name, call it through `self.`. The unit
+  tests now assert the helpers stay on the seeded stream.
 - **Script class cache lives in `.godot/global_script_class_cache.cfg`.** Adding or
   renaming any `class_name` requires a re-import before game-mode runs can resolve
   it: `godot --headless --import --path <project>`.
@@ -124,6 +130,7 @@ addons/headless_pulse/
     └── bots/                       # kiting_shooter_bot.gd, wall_pusher_bot.gd
 sim_configs/                        # campaigns: arena_2d.tres, stuck_test.tres
 tools/                              # verify.ps1 / verify.sh, run_campaign.ps1 (acceptance wrappers)
+tests/                              # framework-free unit tests (run_tests.gd + cases/*)
 .github/workflows/ci.yml            # GitHub Actions: OS x Godot matrix (verify.sh / verify.ps1)
 .github/dependabot.yml              # weekly GitHub Actions version updates
 reports/                            # generated reports + samples (gitignored, reproducible)
@@ -262,22 +269,27 @@ the required legs at another engine build (e.g. to reproduce a regression).
 
 It re-imports the project and asserts:
 
-1. **Project settings invariants** — `worker_pool/max_threads=1` and the editor
+1. **Unit tests** — `tests/run_tests.gd` runs 6 framework-free suites (256
+   assertions): `SimRNG`, `SimChecksum`, `SimConfig` parsing/validation,
+   `StuckDetector`, `SpatialHeatmap` rasterization and `ReportSynthesizer`
+   statistics/regression gate. Run them standalone with
+   `godot --headless -s res://tests/run_tests.gd` (after `--import`).
+2. **Project settings invariants** — `worker_pool/max_threads=1` and the editor
    plugin enabled (`[editor_plugins]`), so the thread-pool cap cannot regress silently.
-2. **Uncovered script parse** — `plugin.gd` and `ui/sim_dock.gd` pass
+3. **Uncovered script parse** — `plugin.gd` and `ui/sim_dock.gd` pass
    `--check-only --script`; gameplay runs never load them, so without this a syntax
    error could ship green.
-3. **Editor plugin load** — `godot --headless --editor --quit` loads the plugin and
+4. **Editor plugin load** — `godot --headless --editor --quit` loads the plugin and
    dock without `SCRIPT ERROR`.
-4. **Determinism** — same seed twice → identical `digest`, `final_pos`, `kills`, `hp`;
+5. **Determinism** — same seed twice → identical `digest`, `final_pos`, `kills`, `hp`;
    `--sim-batch=1` vs `--sim-batch=3` digests match too.
-5. **Stuck detection** — `wall_pusher_bot` ends with `end_reason=stuck` near the trap,
+6. **Stuck detection** — `wall_pusher_bot` ends with `end_reason=stuck` near the trap,
    and `report.md` contains a `!` hotspot.
-6. **Throughput** — 50 runs of 60 simulated seconds complete in < 5 s (measured ~1.9 s),
+7. **Throughput** — 50 runs of 60 simulated seconds complete in < 5 s (measured ~1.9 s),
    `report.md` < 4 KB, win rate inside the configured target band.
-7. **Regression gate** — a clearly-worse A/B variant (`smg damage=1`) makes
+8. **Regression gate** — a clearly-worse A/B variant (`smg damage=1`) makes
    `--sim-fail-on-regression` exit 4, and the same variant passes with relaxed limits.
-8. **Repeat determinism** — `--sim-repeat=2` campaign reports `identical = true`
+9. **Repeat determinism** — `--sim-repeat=2` campaign reports `identical = true`
    with zero mismatches.
 
 Exit code 0 = all checks pass. Any failing check prints `FAIL` and returns 1.
@@ -318,6 +330,11 @@ Released: `v0.1.0` (2026-11-22) — see [CHANGELOG.md](CHANGELOG.md).
   headless; `--sim-fail-on-regression` makes a campaign exit 4 when the A/B diff
   exceeds the allowed win-rate/survival drop or adds CRITICAL anomalies (exit
   codes 0/1/2/3/4 documented in the CLI help).
+- **M6 — unit test suite + latent bug fix**: done. Framework-free test runner
+  (`tests/run_tests.gd`, 6 suites / 256 assertions) wired into both verify scripts
+  (now 15 acceptance checks). The `SimRNG` suite caught a latent determinism bug:
+  composite helpers called the global `@GlobalScope` RNG instead of the seeded
+  instance; they now use `self.*` and are covered by regression assertions.
 
 ## How to onboard a real game (5 minutes)
 

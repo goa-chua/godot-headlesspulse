@@ -50,31 +50,33 @@ func randi_range(from: int, to: int) -> int:
 
 
 func rand_bool(probability: float = 0.5) -> bool:
-	return randf() < probability
+	# NOTE: unqualified `randf()` would resolve to the @GlobalScope built-in, not
+	# this class's seeded method, so composite helpers qualify with `self.`.
+	return self.randf() < probability
 
 
 func rand_vec2(from: Vector2, to: Vector2) -> Vector2:
 	return Vector2(
-		randf_range(from.x, to.x),
-		randf_range(from.y, to.y)
+		self.randf_range(from.x, to.x),
+		self.randf_range(from.y, to.y)
 	)
 
 
 func rand_unit_vec2() -> Vector2:
-	var angle: float = randf_range(0.0, TAU)
+	var angle: float = self.randf_range(0.0, TAU)
 	return Vector2(cos(angle), sin(angle))
 
 
 func pick(items: Array) -> Variant:
 	if items.is_empty():
 		return null
-	return items[randi_range(0, items.size() - 1)]
+	return items[self.randi_range(0, items.size() - 1)]
 
 
 ## Deterministic shuffle (Array.shuffle() uses the global RNG, so it is banned).
 func shuffle(items: Array) -> void:
 	for i: int in range(items.size() - 1, 0, -1):
-		var j: int = randi_range(0, i)
+		var j: int = self.randi_range(0, i)
 		var tmp: Variant = items[i]
 		items[i] = items[j]
 		items[j] = tmp
@@ -86,8 +88,8 @@ func rand_range_weighted(entries: Array, weight_key: String) -> Variant:
 	for entry: Dictionary in entries:
 		total += float(entry.get(weight_key, 0.0))
 	if total <= 0.0:
-		return pick(entries)
-	var roll: float = randf_range(0.0, total)
+		return self.pick(entries)
+	var roll: float = self.randf_range(0.0, total)
 	var acc: float = 0.0
 	for entry: Dictionary in entries:
 		acc += float(entry.get(weight_key, 0.0))

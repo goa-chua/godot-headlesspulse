@@ -3,11 +3,12 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot "C:\path\to\godot.exe"
 #   CAMPAIGN_BUDGET=120 powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot ...
 #
-# Re-imports the project, then asserts project-settings invariants, parses the
-# editor-only scripts, loads the editor plugin headless, checks determinism,
-# batch-size independence, stuck detection, campaign throughput/report budget,
-# balance band, the A/B regression gate and repeat-determinism. Exit code 0 =
-# all pass. Mirrors tools/verify.sh (Linux/macOS/Git Bash); CI runs both.
+# Re-imports the project, then runs the unit-test suites, asserts project-settings
+# invariants, parses the editor-only scripts, loads the editor plugin headless,
+# checks determinism, batch-size independence, stuck detection, campaign
+# throughput/report budget, balance band, the A/B regression gate and
+# repeat-determinism. Exit code 0 = all pass. Mirrors tools/verify.sh
+# (Linux/macOS/Git Bash); CI runs both.
 param(
     [string]$Godot = $env:GODOT_BIN,
     [int]$Runs = 50,
@@ -80,6 +81,20 @@ Write-Host ""
 # --- 0. import (refresh script class cache) ---------------------------------
 $import = Invoke-Godot 'import' ('--headless --import --path "' + $root + '"')
 Check 'import project' ($import.ExitCode -eq 0) "exit=$($import.ExitCode)"
+
+# --- 0a. unit tests --------------------------------------------------------
+# Fast engine-native suites (no framework): RNG, checksum, config parsing,
+# stuck detection, heatmap rasterizer, report statistics and the regression gate.
+$unit = Invoke-Godot 'unit_tests' ('--headless --path "' + $root + '" -s res://tests/run_tests.gd')
+$unitLog = if (Test-Path $unit.Log) { Get-Content $unit.Log -Raw } else { '' }
+$unitSummary = ''
+$unitMatch = [regex]::Match($unitLog, '(?m)^unit tests:.*$')
+if ($unitMatch.Success) { $unitSummary = $unitMatch.Value }
+if ($unit.ExitCode -ne 0) {
+    $unitFail = [regex]::Match($unitLog, '(?m)^\[FAIL\].*$')
+    if ($unitFail.Success) { $unitSummary = $unitFail.Value }
+}
+Check 'unit tests' ($unit.ExitCode -eq 0) $unitSummary
 
 # --- 0b. project settings invariants ---------------------------------------
 # Hard rules from AGENTS.md: campaigns need a capped worker pool, and the editor

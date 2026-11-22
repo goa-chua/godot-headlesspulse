@@ -5,7 +5,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)
 [![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
 [![Godot](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org)
-[![Status](https://img.shields.io/badge/status-M1--M5%20verified-brightgreen)](#路线图)
+[![Status](https://img.shields.io/badge/status-M1--M6%20verified-brightgreen)](#路线图)
 [![Release](https://img.shields.io/github/v/release/goa-chua/godot-headlesspulse?display_name=tag&sort=semver)](https://github.com/goa-chua/godot-headlesspulse/releases)
 [![Changelog](https://img.shields.io/badge/changelog-v0.1.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -299,11 +299,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot "C:\
 # PowerShell 7+ 环境可用：pwsh -File tools/verify.ps1 -Godot ...
 ```
 
-依次校验：重新导入 → **项目设置不变量**（`worker_pool/max_threads=1` + 编辑器插件启用）→
+依次校验：重新导入 → **单元测试**（6 套件 / 256 断言：RNG、校验和、配置解析、卡死检测、热力图、报告统计与回归门禁）→
+**项目设置不变量**（`worker_pool/max_threads=1` + 编辑器插件启用）→
 **editor-only 脚本解析**（`plugin.gd` / `sim_dock.gd`，平时跑 campaign 不会加载它们）→
 **编辑器插件 headless 加载** → 同 seed 双跑确定性 → **batch=1 vs batch=3 一致性** → 卡死检测 →
 50 局吞吐（< 5s）与报告体积（< 4 KB）→ 胜率目标区间 → **A/B 回归门禁**（坏改动必须 exit 4 /
 放宽阈值必须 exit 0）→ repeat=2 确定性。全部 PASS 返回 0，失败打印 `FAIL` 并返回 1。
+
+单元测试也可单独跑（无需框架）：
+
+```powershell
+godot --headless --import --path .                                  # 首次/新增脚本后刷新类缓存
+godot --headless --path . -s res://tests/run_tests.gd               # 6 suites / 256 assertions
+```
 
 Linux / macOS / Git Bash：`bash tools/verify.sh /path/to/godot`（CI 环境用宽松吞吐预算 `CAMPAIGN_BUDGET=120`，两套脚本都支持该环境变量）。
 
@@ -569,6 +577,7 @@ Windows / Steam 版 Godot 是 GUI 子系统程序，PowerShell 不会等待。�
 | M3 | 批量多进程调度、统计聚合、`.tres` 覆写 A/B | ✅ 已实现并验证 |
 | M4 | 编辑器 Dock（运行 / 进度 / 预览 / 复制 / 复现 Seed） | ✅ 已实现并验证 |
 | M5 | CLI 自检（`--sim-help` / `--sim-dry-run` / 未知参数告警）、CI 硬化（脚本解析、插件加载、设置不变量）、A/B 回归门禁（exit 4） | ✅ 已实现并验证 |
+| M6 | 单元测试（6 套件 / 256 断言，接入两套验收脚本；同时修掉 `SimRNG` 组合方法误用全局 RNG 的潜在确定性 bug） | ✅ 已实现并验证 |
 | CI | GitHub Actions 矩阵：ubuntu + windows × Godot 4.7.2，另加最新稳定版参考 leg；跑验收、上传报告 | ✅ 已实现并验证 |
 | 发布 | `v0.1.0` tag + GitHub Release + [CHANGELOG.md](CHANGELOG.md) + Dependabot 自动升级 Actions | ✅ 已完成 |
 | 后续 | 2D/3D 多场景示例、报告 diff 可视化、长时仿真 Streaming | 💡 计划中 |
