@@ -5,8 +5,9 @@ Read it fully before changing code. Verified status and exact commands are below
 do not trust assumptions that contradict the "Verified engine facts" table — it
 was measured on this machine with Godot 4.7.2.
 
-Docs: [README.md](README.md) (简体中文) · [README.en.md](README.en.md) (English) · [LICENSE](LICENSE).
+Docs: [README.md](README.md) (简体中文) · [README.en.md](README.en.md) (English) · [CHANGELOG.md](CHANGELOG.md) · [LICENSE](LICENSE).
 Repo: <https://github.com/goa-chua/godot-headlesspulse>
+Releases: <https://github.com/goa-chua/godot-headlesspulse/releases> (current: `v0.1.0`)
 
 ## What this project is
 
@@ -124,8 +125,10 @@ addons/headless_pulse/
 sim_configs/                        # campaigns: arena_2d.tres, stuck_test.tres
 tools/                              # verify.ps1 / verify.sh, run_campaign.ps1 (acceptance wrappers)
 .github/workflows/ci.yml            # GitHub Actions: OS x Godot matrix (verify.sh / verify.ps1)
+.github/dependabot.yml              # weekly GitHub Actions version updates
 reports/                            # generated reports + samples (gitignored, reproducible)
 README.md / README.en.md            # bilingual user docs (Chinese default, English mirror)
+CHANGELOG.md                        # Keep a Changelog history (released versions from 0.1.0)
 AGENTS.md / LICENSE
 ```
 
@@ -278,6 +281,22 @@ It re-imports the project and asserts:
    with zero mismatches.
 
 Exit code 0 = all checks pass. Any failing check prints `FAIL` and returns 1.
+
+## Release checklist
+
+The version lives in two synced places: `addons/headless_pulse/plugin.cfg`
+(`version=`) and `project.godot` (`application/config/version=`).
+
+1. Run the full acceptance suite (`tools/verify.ps1` or `tools/verify.sh`) — all green.
+2. Move the `CHANGELOG.md` `Unreleased` entries under a new `## [x.y.z] - YYYY-MM-DD`
+   section and update the compare links at the bottom of the file.
+3. Bump `plugin.cfg` `version` and `project.godot` `config/version` to `x.y.z`.
+4. Commit (`release: vx.y.z`) and create an annotated tag: `git tag -a vx.y.z -m "vx.y.z"`.
+5. Push commit + tag (`git push origin main --follow-tags`) and create the GitHub
+   Release from the tag (notes = the CHANGELOG section plus the verified numbers).
+6. Confirm the CI matrix is green on the tagged commit before announcing.
+
+Released: `v0.1.0` (2026-11-22) — see [CHANGELOG.md](CHANGELOG.md).
 
 ## Milestones (all implemented and verified)
 

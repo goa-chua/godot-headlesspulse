@@ -1,0 +1,16 @@
+version: 2
+
+updates:
+  # This repo has no package managers; the only dependency to keep current is the
+  # set of GitHub Actions used by .github/workflows/ci.yml (checkout/cache/upload).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    groups:
+      github-actions:
+        patterns: ["*"]

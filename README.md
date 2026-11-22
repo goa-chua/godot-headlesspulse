@@ -6,6 +6,8 @@
 [![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
 [![Godot](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org)
 [![Status](https://img.shields.io/badge/status-M1--M5%20verified-brightgreen)](#路线图)
+[![Release](https://img.shields.io/github/v/release/goa-chua/godot-headlesspulse?display_name=tag&sort=semver)](https://github.com/goa-chua/godot-headlesspulse/releases)
+[![Changelog](https://img.shields.io/badge/changelog-v0.1.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#已知限制)
 
@@ -568,6 +570,7 @@ Windows / Steam 版 Godot 是 GUI 子系统程序，PowerShell 不会等待。�
 | M4 | 编辑器 Dock（运行 / 进度 / 预览 / 复制 / 复现 Seed） | ✅ 已实现并验证 |
 | M5 | CLI 自检（`--sim-help` / `--sim-dry-run` / 未知参数告警）、CI 硬化（脚本解析、插件加载、设置不变量）、A/B 回归门禁（exit 4） | ✅ 已实现并验证 |
 | CI | GitHub Actions 矩阵：ubuntu + windows × Godot 4.7.2，另加最新稳定版参考 leg；跑验收、上传报告 | ✅ 已实现并验证 |
+| 发布 | `v0.1.0` tag + GitHub Release + [CHANGELOG.md](CHANGELOG.md) + Dependabot 自动升级 Actions | ✅ 已完成 |
 | 后续 | 2D/3D 多场景示例、报告 diff 可视化、长时仿真 Streaming | 💡 计划中 |
 
 ---
@@ -577,7 +580,8 @@ Windows / Steam 版 Godot 是 GUI 子系统程序，PowerShell 不会等待。�
 1. 改完代码先跑 `tools/verify.ps1`，确保全部检查 PASS；
 2. 新增 `class_name` 后记得 `--import` 刷新类缓存，并同步 `AGENTS.md` 的目录树与数据契约；
 3. 保持 `report.md` < 4 KB，新增报告内容需说明体积影响；
-4. 提交信息建议：`feat(core): ...` / `fix(telemetry): ...` / `docs(readme): ...`。
+4. 用户可见的变更记录到 [CHANGELOG.md](CHANGELOG.md)（`CHANGELOG.md` 的 `Unreleased` 段）；
+5. 提交信息建议：`feat(core): ...` / `fix(telemetry): ...` / `docs(readme): ...`。
 
 更多实现约束与验证要求见 [AGENTS.md](AGENTS.md)。
 

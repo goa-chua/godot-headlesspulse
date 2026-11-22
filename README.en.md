@@ -6,6 +6,8 @@
 [![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
 [![Godot](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org)
 [![Status](https://img.shields.io/badge/status-M1--M5%20verified-brightgreen)](#roadmap)
+[![Release](https://img.shields.io/github/v/release/goa-chua/godot-headlesspulse?display_name=tag&sort=semver)](https://github.com/goa-chua/godot-headlesspulse/releases)
+[![Changelog](https://img.shields.io/badge/changelog-v0.1.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#known-limitations)
 
@@ -595,6 +597,7 @@ regressions early. On any CI system you can also run the CLI directly with
 | M4 | Editor dock (run / progress / preview / copy / replay seed) | ✅ implemented and verified |
 | M5 | CLI self-check (`--sim-help` / `--sim-dry-run` / unknown-option warnings), CI hardening (script parse, plugin load, settings invariants), A/B regression gate (exit 4) | ✅ implemented and verified |
 | CI | GitHub Actions matrix: ubuntu + windows on Godot 4.7.2, plus an advisory latest-stable leg; runs acceptance checks and uploads reports | ✅ implemented and verified |
+| Release | `v0.1.0` tag + GitHub Release + [CHANGELOG.md](CHANGELOG.md) + Dependabot for GitHub Actions | ✅ done |
 | Next | 2D/3D multi-scene examples, report diff visualization, long-session streaming | 💡 planned |
 
 ---
@@ -604,7 +607,8 @@ regressions early. On any CI system you can also run the CLI directly with
 1. Run `tools/verify.ps1` after changes and keep every check passing;
 2. Re-import after adding a `class_name`, and update the directory tree/data contracts in `AGENTS.md`;
 3. Keep `report.md` under 4 KB; explain the size impact when you add report content;
-4. Suggested commit prefixes: `feat(core): ...` / `fix(telemetry): ...` / `docs(readme): ...`.
+4. Record user-visible changes in [CHANGELOG.md](CHANGELOG.md) (under `Unreleased`);
+5. Suggested commit prefixes: `feat(core): ...` / `fix(telemetry): ...` / `docs(readme): ...`.
 
 Implementation constraints live in [AGENTS.md](AGENTS.md).
 
