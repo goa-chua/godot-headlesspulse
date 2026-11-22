@@ -103,6 +103,11 @@ Four pitfalls that already caused bugs here — keep them in mind:
     `--sim-batch=1` (one process per run). The tree is paused from `_ready` until
     the run is seeded, so run 0 must never tick before the run starts: results
     must not depend on `--sim-batch`. `tools/verify.sh` / `verify.ps1` assert this.
+11. **Acceptance logic has one home.** `tools/verify_checks.gd` is the single
+    source of the acceptance checks; `tools/verify.sh` and `tools/verify.ps1` are
+    thin launchers (binary resolution + waiting for the GUI-subsystem binary) only.
+    Add or change a check there, never in the launchers, so Linux, macOS and
+    Windows cannot drift apart.
 
 ## Directory layout
 
@@ -129,7 +134,7 @@ addons/headless_pulse/
     ├── arena_2d/                   # self-contained demo scene, tuning .tres, weapons
     └── bots/                       # kiting_shooter_bot.gd, wall_pusher_bot.gd
 sim_configs/                        # campaigns: arena_2d.tres, stuck_test.tres
-tools/                              # verify.ps1 / verify.sh, run_campaign.ps1 (acceptance wrappers)
+tools/                              # verify_checks.gd (single-source checks) + verify.sh/.ps1 launchers + run_campaign.ps1
 tests/                              # framework-free unit tests (run_tests.gd + cases/*)
 .github/workflows/ci.yml            # GitHub Actions: OS x Godot matrix (verify.sh / verify.ps1)
 .github/dependabot.yml              # weekly GitHub Actions version updates
@@ -258,6 +263,13 @@ On Linux/macOS (and Git Bash on Windows), the same checks run with bash; this is
 bash tools/verify.sh /path/to/godot      # CAMPAIGN_BUDGET=120 on shared CI runners
 ```
 
+Both launchers are thin: every check lives in `tools/verify_checks.gd`, invoked as
+`godot --headless --path . -s res://tools/verify_checks.gd -- --budget=<seconds>`.
+The checker spawns the worker processes itself via `OS.execute()`, prints one
+`[PASS]/[FAIL]` line per check and writes per-check logs to `reports/_verify/`.
+CI therefore runs the identical check code on ubuntu-latest (`verify.sh`) and
+windows-latest (`verify.ps1`); `CAMPAIGN_BUDGET` (CI: 120) is the only knob.
+
 GitHub Actions: `.github/workflows/ci.yml` runs both scripts as an OS x Godot
 matrix. Required legs: ubuntu-latest (`bash tools/verify.sh`) and windows-latest
 (`tools/verify.ps1`) on the pinned Godot 4.7.2. An advisory ubuntu leg tracks the
@@ -335,6 +347,11 @@ Released: `v0.1.0` (2026-11-22) — see [CHANGELOG.md](CHANGELOG.md).
   (now 15 acceptance checks). The `SimRNG` suite caught a latent determinism bug:
   composite helpers called the global `@GlobalScope` RNG instead of the seeded
   instance; they now use `self.*` and are covered by regression assertions.
+- **M7 — single-source acceptance runner**: done. All 15 checks moved into
+  `tools/verify_checks.gd` (one cross-platform implementation; child Godot processes
+  spawned through `OS.execute()`, per-check logs under `reports/_verify/`).
+  `tools/verify.sh` / `tools/verify.ps1` are now ~40-line launchers, so the Linux
+  and Windows CI legs cannot drift; both print the same check names and messages.
 
 ## How to onboard a real game (5 minutes)
 

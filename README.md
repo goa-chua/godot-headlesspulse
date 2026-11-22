@@ -5,7 +5,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)
 [![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
 [![Godot](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org)
-[![Status](https://img.shields.io/badge/status-M1--M6%20verified-brightgreen)](#路线图)
+[![Status](https://img.shields.io/badge/status-M1--M7%20verified-brightgreen)](#路线图)
 [![Release](https://img.shields.io/github/v/release/goa-chua/godot-headlesspulse?display_name=tag&sort=semver)](https://github.com/goa-chua/godot-headlesspulse/releases)
 [![Changelog](https://img.shields.io/badge/changelog-v0.1.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -315,6 +315,11 @@ godot --headless --path . -s res://tests/run_tests.gd               # 6 suites /
 
 Linux / macOS / Git Bash：`bash tools/verify.sh /path/to/godot`（CI 环境用宽松吞吐预算 `CAMPAIGN_BUDGET=120`，两套脚本都支持该环境变量）。
 
+两套启动脚本都是薄壳：**全部 15 项检查的实现只有一份** —— [tools/verify_checks.gd](tools/verify_checks.gd)
+（`godot --headless --path . -s res://tools/verify_checks.gd -- --budget=<秒>`），它自己用
+`OS.execute()` 拉起 worker 进程、逐项打印 `[PASS]/[FAIL]` 并把单项日志写到 `reports/_verify/`。
+因此 Ubuntu 与 Windows 的 CI leg 跑的是**同一份检查代码**，不会出现两边逻辑漂移。
+
 仓库内置 GitHub Actions 矩阵 CI（`.github/workflows/ci.yml`）：
 
 - **必需 leg**：`ubuntu-latest` 跑 `tools/verify.sh`、`windows-latest` 跑 `tools/verify.ps1`，都固定 Godot 4.7.2；
@@ -578,6 +583,7 @@ Windows / Steam 版 Godot 是 GUI 子系统程序，PowerShell 不会等待。�
 | M4 | 编辑器 Dock（运行 / 进度 / 预览 / 复制 / 复现 Seed） | ✅ 已实现并验证 |
 | M5 | CLI 自检（`--sim-help` / `--sim-dry-run` / 未知参数告警）、CI 硬化（脚本解析、插件加载、设置不变量）、A/B 回归门禁（exit 4） | ✅ 已实现并验证 |
 | M6 | 单元测试（6 套件 / 256 断言，接入两套验收脚本；同时修掉 `SimRNG` 组合方法误用全局 RNG 的潜在确定性 bug） | ✅ 已实现并验证 |
+| M7 | 验收逻辑单一来源：15 项检查全部收敛到 `tools/verify_checks.gd`，`verify.sh` / `verify.ps1` 变成薄启动器（Linux/Windows 不再漂移） | ✅ 已实现并验证 |
 | CI | GitHub Actions 矩阵：ubuntu + windows × Godot 4.7.2，另加最新稳定版参考 leg；跑验收、上传报告 | ✅ 已实现并验证 |
 | 发布 | `v0.1.0` tag + GitHub Release + [CHANGELOG.md](CHANGELOG.md) + Dependabot 自动升级 Actions | ✅ 已完成 |
 | 后续 | 2D/3D 多场景示例、报告 diff 可视化、长时仿真 Streaming | 💡 计划中 |

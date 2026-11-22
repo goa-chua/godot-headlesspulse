@@ -5,7 +5,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-goa--chua%2Fgodot--headlesspulse-181717?logo=github)](https://github.com/goa-chua/godot-headlesspulse)
 [![CI](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml/badge.svg)](https://github.com/goa-chua/godot-headlesspulse/actions/workflows/ci.yml)
 [![Godot](https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org)
-[![Status](https://img.shields.io/badge/status-M1--M6%20verified-brightgreen)](#roadmap)
+[![Status](https://img.shields.io/badge/status-M1--M7%20verified-brightgreen)](#roadmap)
 [![Release](https://img.shields.io/github/v/release/goa-chua/godot-headlesspulse?display_name=tag&sort=semver)](https://github.com/goa-chua/godot-headlesspulse/releases)
 [![Changelog](https://img.shields.io/badge/changelog-v0.1.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -320,6 +320,13 @@ godot --headless --path . -s res://tests/run_tests.gd               # 6 suites /
 
 Linux / macOS / Git Bash: `bash tools/verify.sh /path/to/godot` (CI uses a relaxed `CAMPAIGN_BUDGET=120`; both scripts honour that variable).
 
+Both launchers are thin: **all 15 checks live in one implementation**,
+[tools/verify_checks.gd](tools/verify_checks.gd)
+(`godot --headless --path . -s res://tools/verify_checks.gd -- --budget=<seconds>`).
+It spawns the worker processes itself through `OS.execute()`, prints one
+`[PASS]/[FAIL]` line per check and writes per-check logs to `reports/_verify/`, so
+the ubuntu and windows CI legs run identical check code and cannot drift.
+
 The repository ships a matrix CI (`.github/workflows/ci.yml`):
 
 - **Required legs**: `ubuntu-latest` runs `tools/verify.sh`, `windows-latest` runs `tools/verify.ps1`, both on the pinned Godot 4.7.2.
@@ -605,6 +612,7 @@ regressions early. On any CI system you can also run the CLI directly with
 | M4 | Editor dock (run / progress / preview / copy / replay seed) | ✅ implemented and verified |
 | M5 | CLI self-check (`--sim-help` / `--sim-dry-run` / unknown-option warnings), CI hardening (script parse, plugin load, settings invariants), A/B regression gate (exit 4) | ✅ implemented and verified |
 | M6 | Unit tests (6 suites / 256 assertions, wired into both verify scripts; also fixed the latent `SimRNG` composite-helper bug that bypassed the seeded RNG) | ✅ implemented and verified |
+| M7 | Single-source acceptance runner: all 15 checks in `tools/verify_checks.gd`, `verify.sh` / `verify.ps1` reduced to thin launchers (Linux/Windows cannot drift) | ✅ implemented and verified |
 | CI | GitHub Actions matrix: ubuntu + windows on Godot 4.7.2, plus an advisory latest-stable leg; runs acceptance checks and uploads reports | ✅ implemented and verified |
 | Release | `v0.1.0` tag + GitHub Release + [CHANGELOG.md](CHANGELOG.md) + Dependabot for GitHub Actions | ✅ done |
 | Next | 2D/3D multi-scene examples, report diff visualization, long-session streaming | 💡 planned |

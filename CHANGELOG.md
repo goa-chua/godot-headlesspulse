@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gate. Run with `godot --headless --path . -s res://tests/run_tests.gd`; both
   verify scripts run it automatically (now 15 acceptance checks).
 
+### Changed
+
+- Acceptance checks are now a single cross-platform implementation,
+  `tools/verify_checks.gd` (child Godot runs through `OS.execute()`, per-check logs
+  under `reports/_verify/`). `tools/verify.sh` and `tools/verify.ps1` are thin
+  launchers, so the Linux and Windows CI legs execute identical logic and cannot
+  drift. Same 15 checks and behaviour; `CAMPAIGN_BUDGET` is still the only knob.
+
 ### Fixed
 
 - `SimRNG` composite helpers (`rand_bool`, `rand_vec2`, `rand_unit_vec2`, `pick`,
