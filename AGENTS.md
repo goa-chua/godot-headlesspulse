@@ -163,7 +163,9 @@ damage_median, dps_median, dps_p90, hp_remaining_median, accuracy_median},
 weapons {id: {damage, share, dps}}, anomalies [{severity, code, message, data,
 suggestion}], heatmap, hotspots {deaths, stucks, traffic}, timeseries {bucket_seconds,
 buckets [...]}, determinism {checked, identical, mismatches}, failed, ab_diff (when
-`--sim-baseline` given)`.
+`--sim-baseline` given: `win_rate, stuck_rate, stuck_events, deaths, survival_median,
+dps_median, critical_anomalies {baseline, current, delta}, weapons {share_baseline,
+share_current, share_delta}})`.
 
 ### `report.md` sections
 
@@ -199,18 +201,39 @@ godot --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- `
 godot --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- `
   --sim-mode --sim-runs=30 --sim-seed=1000 --sim-out=res://reports/ab --sim-baseline=res://reports/campaign/report.json `
   --sim-set="res://addons/headless_pulse/examples/arena_2d/weapons/smg.tres|damage=10"
+
+# A/B regression gate: exits 4 when win_rate/survival drop or new CRITICALs appear
+godot --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- `
+  --sim-mode --sim-runs=50 --sim-seed=1000 --sim-out=res://reports/ab --sim-baseline=res://reports/campaign/report.json `
+  --sim-fail-on-regression --sim-gate-win-drop=0.05 --sim-gate-survival-drop=5
+
+# self-check: print every option / validate a config without simulating
+godot --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- --sim-help
+godot --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- --sim-mode --sim-dry-run
 ```
 
-All worker-relevant options: `--sim-config --sim-scene --sim-bot --sim-seed --sim-runs
---sim-repeat --sim-jobs --sim-batch --sim-max-time --sim-out --sim-tag --sim-grid --sim-bounds
---sim-sample-interval --sim-stuck-window --sim-stuck-threshold --sim-terminate-on-stuck
---sim-set --sim-report-name --sim-baseline --sim-verbose --sim-replay`.
+Options (authoritative list + defaults: `--sim-help`, source `SimConfig.help_text()`):
+`--sim-mode --sim-help --sim-dry-run --sim-config --sim-scene --sim-bot --sim-name
+--sim-seed --sim-runs --sim-repeat --sim-jobs --sim-batch --sim-max-time --sim-out
+--sim-report-name --sim-tag --sim-baseline --sim-verbose --sim-no-determinism-check
+--sim-player-group --sim-enemy-group --sim-grid --sim-bounds --sim-sample-interval
+--sim-stuck-window --sim-stuck-threshold --sim-terminate-on-stuck --sim-win-rate-min
+--sim-win-rate-max --sim-set --sim-replay --sim-fail-on-regression --sim-gate-win-drop
+--sim-gate-survival-drop --sim-gate-fail-on-new-critical`.
+
+Unknown `--sim-*` options print a warning instead of being ignored. Campaign exit
+codes: `0` ok, `1` campaign failed, `2` bad arguments/config, `3` worker start
+failure, `4` regression gate failed.
 
 `--sim-batch` is the worker-side batch size (runs per process); the orchestrator
 derives it automatically as `ceil(runs / workers)` unless overridden.
 
 `--sim-set` format is `<res://path.tres>|<property>=<value>` (repeatable,
 applied by every worker before the scene loads).
+
+`--sim-fail-on-regression` needs `--sim-baseline`; `ReportSynthesizer.evaluate_regression_gate()`
+checks the A/B diff (`win_rate`, `survival_median`, `critical_anomalies`) and the
+CLI prints one `gate PASS/FAIL` line per rule before exiting 4.
 
 ## Verification workflow (do this after any change)
 
@@ -236,12 +259,22 @@ the required legs at another engine build (e.g. to reproduce a regression).
 
 It re-imports the project and asserts:
 
-1. **Determinism** — same seed twice → identical `digest`, `final_pos`, `kills`, `hp`.
-2. **Stuck detection** — `wall_pusher_bot` ends with `end_reason=stuck` near the trap,
+1. **Project settings invariants** — `worker_pool/max_threads=1` and the editor
+   plugin enabled (`[editor_plugins]`), so the thread-pool cap cannot regress silently.
+2. **Uncovered script parse** — `plugin.gd` and `ui/sim_dock.gd` pass
+   `--check-only --script`; gameplay runs never load them, so without this a syntax
+   error could ship green.
+3. **Editor plugin load** — `godot --headless --editor --quit` loads the plugin and
+   dock without `SCRIPT ERROR`.
+4. **Determinism** — same seed twice → identical `digest`, `final_pos`, `kills`, `hp`;
+   `--sim-batch=1` vs `--sim-batch=3` digests match too.
+5. **Stuck detection** — `wall_pusher_bot` ends with `end_reason=stuck` near the trap,
    and `report.md` contains a `!` hotspot.
-3. **Throughput** — 50 runs of 60 simulated seconds complete in < 5 s (measured ~1.9 s),
+6. **Throughput** — 50 runs of 60 simulated seconds complete in < 5 s (measured ~1.9 s),
    `report.md` < 4 KB, win rate inside the configured target band.
-4. **Repeat determinism** — `--sim-repeat=2` campaign reports `identical = true`
+7. **Regression gate** — a clearly-worse A/B variant (`smg damage=1`) makes
+   `--sim-fail-on-regression` exit 4, and the same variant passes with relaxed limits.
+8. **Repeat determinism** — `--sim-repeat=2` campaign reports `identical = true`
    with zero mismatches.
 
 Exit code 0 = all checks pass. Any failing check prints `FAIL` and returns 1.
@@ -260,6 +293,12 @@ Exit code 0 = all checks pass. Any failing check prints `FAIL` and returns 1.
 - **M4 — editor dock**: done. `plugin.gd` registers a dock that runs campaigns,
   shows progress and the ASCII report, copies it for an agent, and replays a seed
   at 1x in a windowed process.
+- **M5 — CLI self-check + CI hardening + regression gate**: done. `--sim-help`,
+  `--sim-dry-run`, unknown-option warnings; verify scripts now check project
+  settings invariants, parse the editor-only scripts and load the editor plugin
+  headless; `--sim-fail-on-regression` makes a campaign exit 4 when the A/B diff
+  exceeds the allowed win-rate/survival drop or adds CRITICAL anomalies (exit
+  codes 0/1/2/3/4 documented in the CLI help).
 
 ## How to onboard a real game (5 minutes)
 

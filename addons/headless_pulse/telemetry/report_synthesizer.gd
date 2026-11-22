@@ -397,6 +397,11 @@ static func _ab_diff(report: Dictionary, baseline: Dictionary) -> Dictionary:
 	}
 	diff["dps_median"]["delta"] = snappedf(
 		diff["dps_median"]["current"] - diff["dps_median"]["baseline"], 0.01)
+	diff["critical_anomalies"] = {
+		"baseline": _count_critical(baseline),
+		"current": _count_critical(report),
+		"delta": _count_critical(report) - _count_critical(baseline),
+	}
 
 	var weapon_diff: Dictionary = {}
 	var before_weapons: Dictionary = baseline.get("weapons", {})
@@ -411,6 +416,65 @@ static func _ab_diff(report: Dictionary, baseline: Dictionary) -> Dictionary:
 		}
 	diff["weapons"] = weapon_diff
 	return diff
+
+
+## Number of CRITICAL anomalies in a report (missing/malformed lists count as 0).
+static func _count_critical(report: Dictionary) -> int:
+	var count: int = 0
+	for entry: Variant in report.get("anomalies", []):
+		if entry is Dictionary and str((entry as Dictionary).get("severity", "")).to_upper() == "CRITICAL":
+			count += 1
+	return count
+
+
+## Regression gate used by `--sim-fail-on-regression`.
+## Returns { "passed": bool, "checks": [ { name, passed, detail } ] } so the CLI
+## can print one line per rule. The gate needs an A/B diff, i.e. a baseline.
+static func evaluate_regression_gate(
+		report: Dictionary,
+		max_win_drop: float,
+		max_survival_drop: float,
+		fail_on_new_critical: bool) -> Dictionary:
+	var checks: Array[Dictionary] = []
+	var diff: Dictionary = report.get("ab_diff", {})
+	if diff.is_empty():
+		checks.append({
+			"name": "baseline diff",
+			"passed": false,
+			"detail": "report has no ab_diff; pass --sim-baseline=<report.json>",
+		})
+		return {"passed": false, "checks": checks}
+
+	var win_delta: float = float(diff.get("win_rate", {}).get("delta", 0.0))
+	checks.append({
+		"name": "win_rate drop",
+		"passed": win_delta >= -max_win_drop,
+		"detail": "%+.1f pp (allowed drop %.1f pp)" % [win_delta * 100.0, max_win_drop * 100.0],
+	})
+
+	var survival_delta: float = float(diff.get("survival_median", {}).get("delta", 0.0))
+	checks.append({
+		"name": "median survival drop",
+		"passed": survival_delta >= -max_survival_drop,
+		"detail": "%+.2f s (allowed drop %.2f s)" % [survival_delta, max_survival_drop],
+	})
+
+	if fail_on_new_critical:
+		var critical: Dictionary = diff.get("critical_anomalies", {})
+		var before: int = int(critical.get("baseline", 0))
+		var now: int = int(critical.get("current", 0))
+		checks.append({
+			"name": "new CRITICAL anomalies",
+			"passed": now <= before,
+			"detail": "%d now vs %d baseline" % [now, before],
+		})
+
+	var passed: bool = true
+	for check: Dictionary in checks:
+		if not bool(check.get("passed", false)):
+			passed = false
+			break
+	return {"passed": passed, "checks": checks}
 
 
 # --- markdown --------------------------------------------------------------

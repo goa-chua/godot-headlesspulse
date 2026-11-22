@@ -3,9 +3,11 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot "C:\path\to\godot.exe"
 #   CAMPAIGN_BUDGET=120 powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot ...
 #
-# Re-imports the project, then asserts determinism, stuck detection, campaign
-# throughput/report budget and repeat-determinism. Exit code 0 = all pass.
-# Mirrors tools/verify.sh (Linux/macOS/Git Bash); CI runs both via a matrix.
+# Re-imports the project, then asserts project-settings invariants, parses the
+# editor-only scripts, loads the editor plugin headless, checks determinism,
+# batch-size independence, stuck detection, campaign throughput/report budget,
+# balance band, the A/B regression gate and repeat-determinism. Exit code 0 =
+# all pass. Mirrors tools/verify.sh (Linux/macOS/Git Bash); CI runs both.
 param(
     [string]$Godot = $env:GODOT_BIN,
     [int]$Runs = 50,
@@ -78,6 +80,42 @@ Write-Host ""
 # --- 0. import (refresh script class cache) ---------------------------------
 $import = Invoke-Godot 'import' ('--headless --import --path "' + $root + '"')
 Check 'import project' ($import.ExitCode -eq 0) "exit=$($import.ExitCode)"
+
+# --- 0b. project settings invariants ---------------------------------------
+# Hard rules from AGENTS.md: campaigns need a capped worker pool, and the editor
+# plugin has to stay enabled for the dock (also checked by the editor smoke test).
+$projectSettings = Get-Content (Join-Path $root 'project.godot') -Raw
+$threadPoolOk = [bool]($projectSettings -match '(?m)^worker_pool/max_threads=1$')
+$pluginEnabledOk = [bool]($projectSettings -match 'headless_pulse/plugin\.cfg')
+Check 'project settings invariants' ($threadPoolOk -and $pluginEnabledOk) `
+    "worker_pool/max_threads=1=$threadPoolOk editor_plugin=$pluginEnabledOk"
+
+# --- 0c. uncovered script parse check --------------------------------------
+# plugin.gd and sim_dock.gd only load in the editor, so the gameplay runs below
+# never parse them; check them explicitly or a syntax error can ship green.
+$uncoveredScripts = @(
+    'res://addons/headless_pulse/plugin.gd',
+    'res://addons/headless_pulse/ui/sim_dock.gd'
+)
+$parseOk = $true
+$parseDetail = 'plugin.gd + sim_dock.gd parse cleanly'
+foreach ($scriptPath in $uncoveredScripts) {
+    $parseName = 'parse_' + [System.IO.Path]::GetFileNameWithoutExtension($scriptPath)
+    $parsed = Invoke-Godot $parseName ('--headless --check-only --path "' + $root + '" --script ' + $scriptPath)
+    if ($parsed.ExitCode -ne 0) {
+        $parseOk = $false
+        $parseDetail = "failed: $scriptPath"
+    }
+}
+Check 'uncovered script parse' $parseOk $parseDetail
+
+# --- 0d. editor plugin load smoke ------------------------------------------
+# Editor mode is the only mode that instantiates plugin.gd and the dock.
+$editor = Invoke-Godot 'editor_load' ('--headless --editor --quit --path "' + $root + '"')
+$editorLog = if (Test-Path $editor.Log) { Get-Content $editor.Log -Raw } else { '' }
+$editorScriptError = [bool]($editorLog -match 'SCRIPT ERROR|Failed to load script')
+Check 'editor plugin load' (($editor.ExitCode -eq 0) -and -not $editorScriptError) `
+    "exit=$($editor.ExitCode) script_errors=$editorScriptError"
 
 # --- 1. single-run determinism ---------------------------------------------
 $runA = Join-Path $verifyDir 'det_a.json'
@@ -170,6 +208,27 @@ if ($report) {
     $balanceDetail = "win_rate=$([math]::Round([double]$report.win_rate*100,1))% stuck_rate=$([math]::Round([double]$report.stuck_rate*100,1))%"
 }
 Check 'balance within target band' ([bool]$winOk) $balanceDetail
+
+# --- 3b. A/B regression gate ----------------------------------------------
+# A clearly-worse variant must make the CLI exit 4 with a failing gate, while
+# relaxed limits let the same variant pass. The campaign above is the baseline.
+$gateOverride = 'res://addons/headless_pulse/examples/arena_2d/weapons/smg.tres|damage=1'
+$gateBaseline = 'res://reports/_verify/campaign/report.json'
+$gateFail = Invoke-Godot 'gate_fail' ('--headless --path "' + $root + '" -s ' + $campaignScript +
+    ' -- --sim-mode --sim-runs=20 --sim-seed=5000 --sim-max-time=60 --sim-out=reports/_verify/gate_fail' +
+    ' --sim-baseline=' + $gateBaseline + ' --sim-fail-on-regression --sim-set="' + $gateOverride + '"')
+$gateFailLog = if (Test-Path $gateFail.Log) { Get-Content $gateFail.Log -Raw } else { '' }
+Check 'regression gate rejects drop' (($gateFail.ExitCode -eq 4) -and [bool]($gateFailLog -match 'regression gate FAILED')) `
+    "exit=$($gateFail.ExitCode) (expected 4)"
+
+$gatePass = Invoke-Godot 'gate_pass' ('--headless --path "' + $root + '" -s ' + $campaignScript +
+    ' -- --sim-mode --sim-runs=20 --sim-seed=5000 --sim-max-time=60 --sim-out=reports/_verify/gate_pass' +
+    ' --sim-baseline=' + $gateBaseline + ' --sim-fail-on-regression' +
+    ' --sim-gate-win-drop=1.0 --sim-gate-survival-drop=60 --sim-gate-fail-on-new-critical=false' +
+    ' --sim-set="' + $gateOverride + '"')
+$gatePassLog = if (Test-Path $gatePass.Log) { Get-Content $gatePass.Log -Raw } else { '' }
+Check 'regression gate allows limit' (($gatePass.ExitCode -eq 0) -and [bool]($gatePassLog -match 'regression gate passed')) `
+    "exit=$($gatePass.ExitCode) (expected 0)"
 
 # --- 4. repeat determinism campaign ----------------------------------------
 $repeatDir = Join-Path $root 'reports\_verify\repeat'

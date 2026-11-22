@@ -6,32 +6,28 @@ extends Resource
 ## arguments. Every field can be overridden from the command line, which lets an
 ## agent run A/B experiments without editing project files.
 ##
-## CLI arguments (everything after `--`):
-##   --sim-mode                     enable simulation (required)
-##   --sim-config=<path.tres>       load a SimConfig resource as the base
-##   --sim-scene=<res://...tscn>    scene to simulate
-##   --sim-bot=<res://...gd>        SimBotBase script that drives the scene
-##   --sim-seed=<int>               first seed of the campaign
-##   --sim-runs=<int>               number of runs
-##   --sim-repeat=<int>             run every seed N times (determinism check)
-##   --sim-jobs=<int>               worker processes (0 = auto)
-##   --sim-batch=<int>              runs per worker process (0 = auto: runs/workers)
-##   --sim-max-time=<float>         simulated seconds per run
-##   --sim-out=<path>               output file (worker) or directory (orchestrator)
-##   --sim-tag=<string>             run id suffix used by the orchestrator
-##   --sim-grid=<cols>x<rows>       ASCII heatmap resolution
-##   --sim-bounds=<x0,y0,x1,y1>     world bounds used by the heatmap
-##   --sim-sample-interval=<float>  time-series sampling period (sim seconds)
-##   --sim-stuck-window=<float>     stuck detection window (sim seconds)
-##   --sim-stuck-threshold=<float>  minimum displacement inside the window (world units)
-##   --sim-terminate-on-stuck       end a run as soon as it is stuck
-##   --sim-set=<res>|<prop>=<val>   override a .tres property for this campaign (repeatable)
-##   --sim-report-name=<string>     base name of the aggregated report
-##   --sim-baseline=<path.json>     baseline report used for A/B diffing
-##   --sim-replay                   windowed 1x replay instead of a headless batch worker
-##   --sim-verbose                  print extra diagnostics
+## Run the CLI with `--sim-help` for the option list (`help_text()` returns the
+## same text); unknown `--sim-*` options are reported instead of being ignored.
+## Campaign CLI exit codes: 0 = ok, 1 = campaign failed, 2 = bad arguments,
+## 3 = worker start failure, 4 = regression gate failed.
 
 const SCHEMA: String = "headless_pulse/config/1"
+
+## Every `--sim-*` option understood by the CLI. `parse_args` collects arguments
+## blindly, so this list is what turns a typo into a warning instead of a silent
+## default value. Keep it in sync when adding an option.
+const KNOWN_OPTIONS: Array = [
+	"sim-mode", "sim-help", "sim-dry-run", "sim-config",
+	"sim-scene", "sim-bot", "sim-name", "sim-seed", "sim-runs", "sim-repeat",
+	"sim-jobs", "sim-batch", "sim-max-time", "sim-tag", "sim-out",
+	"sim-report-name", "sim-baseline", "sim-verbose", "sim-no-determinism-check",
+	"sim-player-group", "sim-enemy-group",
+	"sim-grid", "sim-bounds", "sim-sample-interval", "sim-stuck-window",
+	"sim-stuck-threshold", "sim-terminate-on-stuck",
+	"sim-win-rate-min", "sim-win-rate-max", "sim-set", "sim-replay",
+	"sim-fail-on-regression", "sim-gate-win-drop", "sim-gate-survival-drop",
+	"sim-gate-fail-on-new-critical",
+]
 
 @export var name: String = "arena_2d"
 @export_file("*.tscn") var scene_path: String = "res://addons/headless_pulse/examples/arena_2d/arena.tscn"
@@ -73,6 +69,14 @@ const SCHEMA: String = "headless_pulse/config/1"
 @export var win_rate_target_max: float = 0.80
 @export var stuck_rate_warn: float = 0.05
 @export var weapon_dps_ratio_warn: float = 2.0
+
+@export_group("Regression Gate")
+## When enabled, the campaign CLI exits 4 if the A/B diff against `baseline_path`
+## is worse than the allowed drops below (or a new CRITICAL anomaly appears).
+@export var fail_on_regression: bool = false
+@export var gate_max_win_drop: float = 0.05
+@export var gate_max_survival_drop: float = 5.0
+@export var gate_fail_on_new_critical: bool = true
 
 
 ## Parse `--key=value` user arguments into a dictionary.
@@ -122,6 +126,72 @@ static func from_opts(opts: Dictionary) -> SimConfig:
 			push_error("[headless_pulse] %s" % err)
 		return null
 	return config
+
+
+## `--sim-*` options that were passed but that no code consumes (usually a typo).
+static func unknown_options(opts: Dictionary) -> PackedStringArray:
+	var unknown: PackedStringArray = PackedStringArray()
+	for key: String in opts.keys():
+		if key.begins_with("sim-") and not KNOWN_OPTIONS.has(key):
+			unknown.append("--" + key)
+	unknown.sort()
+	return unknown
+
+
+## Text printed by `--sim-help`. Kept next to the parser so it cannot go stale.
+static func help_text() -> String:
+	return """Godot HeadlessPulse campaign CLI
+usage: godot --headless --path <project> -s res://addons/headless_pulse/cli/run_sim.gd -- --sim-mode [options]
+
+Campaign
+  --sim-mode                        required: enable the simulation runtime
+  --sim-config=<res.tres>           load a SimConfig resource as the base
+  --sim-scene=<res.tscn>            scene to simulate
+  --sim-bot=<res.gd>                SimBotBase script that drives the scene
+  --sim-name=<name>                 campaign name written into the report
+  --sim-seed=<int>                  first seed (run i uses seed + i)
+  --sim-runs=<int>                  number of runs (default 50)
+  --sim-repeat=<int>                run every seed N times (determinism proof)
+  --sim-jobs=<int>                  worker processes (0 = auto: cores - 1)
+  --sim-batch=<int>                 runs per worker process (0 = auto)
+  --sim-max-time=<sec>              simulated seconds per run (default 60)
+
+Output
+  --sim-out=<dir|file.json>         output directory, or exact file for one run
+  --sim-report-name=<name>          base name of report.json / report.md
+  --sim-tag=<tag>                   run id suffix used by worker processes
+
+Telemetry
+  --sim-grid=<cols>x<rows>          ASCII heatmap resolution (4..400 per axis)
+  --sim-bounds=<x0,y0,x1,y1>        world bounds rasterized by the heatmap
+  --sim-sample-interval=<sec>       time-series sampling period
+  --sim-stuck-window=<sec>          stuck detection window
+  --sim-stuck-threshold=<px>        minimum displacement inside that window
+  --sim-terminate-on-stuck          end a run as soon as it is stuck
+  --sim-player-group=<group>        scene group that holds the player
+  --sim-enemy-group=<group>         scene group that holds the enemies
+
+Balance
+  --sim-win-rate-min / --sim-win-rate-max   win-rate target band (anomaly rules)
+  --sim-set="<res>|<prop>=<value>"  override a .tres property (repeatable)
+
+Regression gate (requires --sim-baseline; the campaign exits 4 when it fails)
+  --sim-fail-on-regression          enable the gate
+  --sim-gate-win-drop=<fraction>    allowed win-rate drop (default 0.05)
+  --sim-gate-survival-drop=<sec>    allowed median-survival drop (default 5)
+  --sim-gate-fail-on-new-critical=<bool>   fail on new CRITICAL anomalies (default true)
+
+Misc
+  --sim-baseline=<report.json>      baseline report for the A/B diff
+  --sim-no-determinism-check        skip the repeat-digest check (faster)
+  --sim-verbose                     extra diagnostics
+  --sim-replay                      windowed 1x replay instead of a batch worker
+  --sim-dry-run                     validate the config, print the plan, do not simulate
+  --sim-help                        print this help and exit
+
+exit codes: 0 ok, 1 campaign failed, 2 bad arguments, 3 worker start failure,
+            4 regression gate failed
+"""
 
 
 ## Apply parsed CLI options on top of this config. Returns a list of errors.
@@ -194,6 +264,14 @@ func apply_opts(opts: Dictionary) -> PackedStringArray:
 		var set_list: Array = opts["sim-set"]
 		var extra: PackedStringArray = _apply_overrides(set_list)
 		errors.append_array(extra)
+	if opts.has("sim-fail-on-regression"):
+		fail_on_regression = _to_bool(opts["sim-fail-on-regression"])
+	if opts.has("sim-gate-win-drop"):
+		gate_max_win_drop = _to_float(opts["sim-gate-win-drop"], gate_max_win_drop)
+	if opts.has("sim-gate-survival-drop"):
+		gate_max_survival_drop = _to_float(opts["sim-gate-survival-drop"], gate_max_survival_drop)
+	if opts.has("sim-gate-fail-on-new-critical"):
+		gate_fail_on_new_critical = _to_bool(opts["sim-gate-fail-on-new-critical"])
 	errors.append_array(validate())
 	return errors
 
@@ -244,6 +322,12 @@ func validate() -> PackedStringArray:
 		errors.append("stuck_move_threshold must be >= 0 (got %f)" % stuck_move_threshold)
 	if not auto_bounds and (bounds_max.x <= bounds_min.x or bounds_max.y <= bounds_min.y):
 		errors.append("bounds_max must be greater than bounds_min")
+	if fail_on_regression and baseline_path.is_empty():
+		errors.append("--sim-fail-on-regression requires --sim-baseline=<report.json>")
+	if gate_max_win_drop < 0.0:
+		errors.append("gate_max_win_drop must be >= 0 (got %f)" % gate_max_win_drop)
+	if gate_max_survival_drop < 0.0:
+		errors.append("gate_max_survival_drop must be >= 0 (got %f)" % gate_max_survival_drop)
 	return errors
 
 

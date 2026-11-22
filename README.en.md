@@ -263,6 +263,20 @@ godot --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- `
 `--sim-set` is repeatable; the format is `<res://resource.tres>|<property>=<value>` and every
 worker applies it before loading the scene.
 
+**Regression gate (for CI)**: with `--sim-fail-on-regression`, a campaign whose A/B diff exceeds the
+allowed drops exits **4**, so a balance regression can fail CI directly:
+
+```powershell
+godot --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- `
+  --sim-mode --sim-runs=50 --sim-seed=1000 --sim-out=res://reports/ab `
+  --sim-baseline=res://reports/campaign/report.json --sim-fail-on-regression `
+  --sim-gate-win-drop=0.05 --sim-gate-survival-drop=5 --sim-gate-fail-on-new-critical=true `
+  --sim-set="res://addons/headless_pulse/examples/arena_2d/weapons/smg.tres|damage=10"
+```
+
+Rules (one `gate PASS/FAIL` line each): win-rate drop within the limit, median-survival drop within
+the limit, and no additional CRITICAL anomalies. Tune each rule with its `--sim-gate-*` option.
+
 ### Verify stuck detection (U-shaped trap + wall pusher)
 
 ```powershell
@@ -286,9 +300,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot "C:\
 # With PowerShell 7+: pwsh -File tools/verify.ps1 -Godot ...
 ```
 
-It re-imports the project, then checks same-seed determinism, stuck detection, 50-run throughput
-(< 5 s) and report size (< 4 KB), the win-rate target band, and repeat-determinism. Exit code 0 means
-all checks passed; failures print `FAIL` and return 1.
+It re-imports the project, then checks **project-settings invariants** (`worker_pool/max_threads=1`
+plus the editor plugin enabled), **parses the editor-only scripts** (`plugin.gd` / `sim_dock.gd`,
+never loaded by gameplay runs), **loads the editor plugin headless**, same-seed determinism,
+**batch=1 vs batch=3 digests**, stuck detection, 50-run throughput (< 5 s) and report size (< 4 KB),
+the win-rate target band, the **A/B regression gate** (a worse variant must exit 4, relaxed limits
+must exit 0) and repeat-determinism. Exit code 0 means all checks passed; failures print `FAIL` and
+return 1.
 
 Linux / macOS / Git Bash: `bash tools/verify.sh /path/to/godot` (CI uses a relaxed `CAMPAIGN_BUDGET=120`; both scripts honour that variable).
 
@@ -329,9 +347,20 @@ Quote only numbers from the report. Do not invent metrics.
 | `--sim-terminate-on-stuck` | end a run as soon as it is stuck |
 | `--sim-set=<res>\|<prop>=<val>` | override a `.tres` property (repeatable, for A/B) |
 | `--sim-baseline=<report.json>` | baseline report for A/B diffing |
+| `--sim-fail-on-regression` | enable the regression gate (needs `--sim-baseline`); exits 4 when exceeded |
+| `--sim-gate-win-drop=<fraction>` / `--sim-gate-survival-drop=<sec>` | allowed win-rate / median-survival drop (default 0.05 / 5) |
+| `--sim-gate-fail-on-new-critical=<bool>` | count additional CRITICAL anomalies as a failure (default true) |
 | `--sim-report-name=<name>` | aggregated report file name (default `report`) |
 | `--sim-replay` | 1x windowed replay (leaves rendering/audio on) |
 | `--sim-verbose` | extra diagnostics |
+| `--sim-help` / `--sim-dry-run` | print every option (with defaults) / validate the config and print the plan without simulating |
+| `--sim-no-determinism-check` | skip the repeat-digest check (faster) |
+| `--sim-player-group=<group>` / `--sim-enemy-group=<group>` | scene groups holding the player / enemies |
+| `--sim-win-rate-min` / `--sim-win-rate-max` | win-rate target band used by the anomaly rules |
+
+Unknown `--sim-*` options are reported as warnings instead of being silently ignored; campaign exit
+codes: `0` ok, `1` campaign failed, `2` bad arguments, `3` worker start failure, `4` regression gate
+failed.
 
 ---
 
@@ -564,6 +593,7 @@ regressions early. On any CI system you can also run the CLI directly with
 | M2 | Telemetry, stuck detection, ASCII heatmap, `report.json/md` | ✅ implemented and verified |
 | M3 | Batched multi-process scheduler, statistical aggregation, `.tres` override A/B | ✅ implemented and verified |
 | M4 | Editor dock (run / progress / preview / copy / replay seed) | ✅ implemented and verified |
+| M5 | CLI self-check (`--sim-help` / `--sim-dry-run` / unknown-option warnings), CI hardening (script parse, plugin load, settings invariants), A/B regression gate (exit 4) | ✅ implemented and verified |
 | CI | GitHub Actions matrix: ubuntu + windows on Godot 4.7.2, plus an advisory latest-stable leg; runs acceptance checks and uploads reports | ✅ implemented and verified |
 | Next | 2D/3D multi-scene examples, report diff visualization, long-session streaming | 💡 planned |
 

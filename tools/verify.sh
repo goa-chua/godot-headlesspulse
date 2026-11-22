@@ -5,9 +5,11 @@
 #   CAMPAIGN_BUDGET=120 bash tools/verify.sh /path/to/godot   # slow/shared CI runners
 #   GODOT_BIN=/path/to/godot bash tools/verify.sh
 #
-# Mirrors tools/verify.ps1: re-import the project, then assert same-seed
-# determinism, stuck detection, campaign throughput/report budget, balance band
-# and repeat determinism. Exit code 0 = all checks passed.
+# Mirrors tools/verify.ps1: re-import the project, then assert project-settings
+# invariants, parse the editor-only scripts, load the editor plugin headless,
+# prove same-seed determinism and batch-size independence, check stuck detection,
+# campaign throughput/report budget/balance band, the A/B regression gate and
+# repeat determinism. Exit code 0 = all checks passed.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -85,6 +87,58 @@ if run_godot import --headless --import --path .; then
     pass "import project" "exit=0"
 else
     fail "import project" "exit=$?"
+    show_log_tail
+fi
+
+# --- 0b. project settings invariants ---------------------------------------
+# Hard rules from AGENTS.md: campaigns need a capped worker pool, and the editor
+# plugin has to stay enabled for the dock (also checked by the editor smoke test).
+max_threads="$(grep -E '^worker_pool/max_threads=1$' project.godot | head -n 1)"
+plugin_entry="$(grep -E '^enabled=PackedStringArray\(.*headless_pulse/plugin\.cfg' project.godot | head -n 1)"
+if [ -n "$max_threads" ] && [ -n "$plugin_entry" ]; then
+    pass "project settings invariants" "worker_pool/max_threads=1 + editor plugin enabled"
+else
+    fail "project settings invariants" "max_threads='${max_threads:-missing}' plugin='${plugin_entry:-missing}'"
+fi
+
+# --- 0c. uncovered script parse check --------------------------------------
+# plugin.gd and sim_dock.gd only load in the editor, so the gameplay runs below
+# never parse them; check them explicitly or a syntax error can ship green.
+parse_failures=0
+parse_detail="plugin.gd + sim_dock.gd parse cleanly"
+for uncovered in \
+    res://addons/headless_pulse/plugin.gd \
+    res://addons/headless_pulse/ui/sim_dock.gd; do
+    parse_name="parse_$(basename "$uncovered" .gd)"
+    if ! run_godot "$parse_name" --headless --check-only --path . --script "$uncovered"; then
+        parse_failures=$((parse_failures + 1))
+        parse_detail="$parse_detail, failed: $uncovered"
+    fi
+done
+if [ "$parse_failures" -eq 0 ]; then
+    pass "uncovered script parse" "$parse_detail"
+else
+    fail "uncovered script parse" "$parse_detail"
+    show_log_tail
+fi
+
+# --- 0d. editor plugin load smoke ------------------------------------------
+# Editor mode is the only mode that instantiates plugin.gd and the dock, so load
+# it headless and fail on script errors.
+editor_ok=0
+editor_detail="editor exited non-zero"
+if run_godot editor_load --headless --editor --quit --path .; then
+    if grep -qE 'SCRIPT ERROR|Failed to load script' "$LAST_LOG"; then
+        editor_detail="$(grep -m 1 -E 'SCRIPT ERROR|Failed to load script' "$LAST_LOG")"
+    else
+        editor_ok=1
+        editor_detail="plugin + dock registered, no script errors"
+    fi
+fi
+if [ "$editor_ok" = "1" ]; then
+    pass "editor plugin load" "$editor_detail"
+else
+    fail "editor plugin load" "$editor_detail"
     show_log_tail
 fi
 
@@ -227,6 +281,34 @@ if [ -f "$campaign_report" ] && [ -f "$campaign_markdown" ]; then
     fi
 else
     fail "campaign throughput" "campaign report missing (exit=$campaign_exit)"
+    show_log_tail
+fi
+
+# --- 3b. A/B regression gate ----------------------------------------------
+# A clearly-worse variant must make the CLI exit 4 with a failing gate, while
+# relaxed limits let the same variant pass. The campaign above is the baseline.
+gate_override='res://addons/headless_pulse/examples/arena_2d/weapons/smg.tres|damage=1'
+gate_baseline='res://reports/_ci/campaign/report.json'
+run_godot gate_fail --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- \
+    --sim-mode --sim-runs=20 --sim-seed=5000 --sim-max-time=60 --sim-out=reports/_ci/gate_fail \
+    --sim-baseline="$gate_baseline" --sim-fail-on-regression --sim-set="$gate_override"
+gate_fail_exit=$?
+run_godot gate_pass --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- \
+    --sim-mode --sim-runs=20 --sim-seed=5000 --sim-max-time=60 --sim-out=reports/_ci/gate_pass \
+    --sim-baseline="$gate_baseline" --sim-fail-on-regression \
+    --sim-gate-win-drop=1.0 --sim-gate-survival-drop=60 --sim-gate-fail-on-new-critical=false \
+    --sim-set="$gate_override"
+gate_pass_exit=$?
+if [ "$gate_fail_exit" -eq 4 ] && grep -q 'regression gate FAILED' "$OUT/gate_fail.log"; then
+    pass "regression gate rejects drop" "exit=4 for smg damage=1 vs campaign baseline"
+else
+    fail "regression gate rejects drop" "exit=$gate_fail_exit (expected 4)"
+    show_log_tail
+fi
+if [ "$gate_pass_exit" -eq 0 ] && grep -q 'regression gate passed' "$OUT/gate_pass.log"; then
+    pass "regression gate allows limit" "exit=0 with relaxed thresholds"
+else
+    fail "regression gate allows limit" "exit=$gate_pass_exit (expected 0)"
     show_log_tail
 fi
 

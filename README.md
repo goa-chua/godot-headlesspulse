@@ -261,6 +261,20 @@ godot --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- `
 
 `--sim-set` 可重复，格式 `<res://资源.tres>|<属性>=<值>`，所有 worker 在场景加载前生效。
 
+**回归门禁（CI 用）**：加 `--sim-fail-on-regression` 后，A/B 差异超过阈值时 campaign 以退出码 **4** 失败，
+可以直接卡在 CI 里拦截数值回归：
+
+```powershell
+godot --headless --path . -s res://addons/headless_pulse/cli/run_sim.gd -- `
+  --sim-mode --sim-runs=50 --sim-seed=1000 --sim-out=res://reports/ab `
+  --sim-baseline=res://reports/campaign/report.json --sim-fail-on-regression `
+  --sim-gate-win-drop=0.05 --sim-gate-survival-drop=5 --sim-gate-fail-on-new-critical=true `
+  --sim-set="res://addons/headless_pulse/examples/arena_2d/weapons/smg.tres|damage=10"
+```
+
+判定规则（每条都打印 `gate PASS/FAIL`）：win_rate 跌幅 ≤ 阈值、median survival 跌幅 ≤ 阈值、
+CRITICAL 异常数不高于基线。阈值都可用 `--sim-gate-*` 调整。
+
 ### 验证卡死检测（U 形陷阱 + 顶墙 Bot）
 
 ```powershell
@@ -283,8 +297,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify.ps1 -Godot "C:\
 # PowerShell 7+ 环境可用：pwsh -File tools/verify.ps1 -Godot ...
 ```
 
-依次校验：重新导入 → 同 seed 双跑确定性 → 卡死检测 → 50 局吞吐（< 5s）与报告体积（< 4 KB）
-→ 胜率目标区间 → repeat=2 确定性。全部 PASS 返回 0，失败打印 `FAIL` 并返回 1。
+依次校验：重新导入 → **项目设置不变量**（`worker_pool/max_threads=1` + 编辑器插件启用）→
+**editor-only 脚本解析**（`plugin.gd` / `sim_dock.gd`，平时跑 campaign 不会加载它们）→
+**编辑器插件 headless 加载** → 同 seed 双跑确定性 → **batch=1 vs batch=3 一致性** → 卡死检测 →
+50 局吞吐（< 5s）与报告体积（< 4 KB）→ 胜率目标区间 → **A/B 回归门禁**（坏改动必须 exit 4 /
+放宽阈值必须 exit 0）→ repeat=2 确定性。全部 PASS 返回 0，失败打印 `FAIL` 并返回 1。
 
 Linux / macOS / Git Bash：`bash tools/verify.sh /path/to/godot`（CI 环境用宽松吞吐预算 `CAMPAIGN_BUDGET=120`，两套脚本都支持该环境变量）。
 
@@ -324,9 +341,19 @@ Linux / macOS / Git Bash：`bash tools/verify.sh /path/to/godot`（CI 环境用�
 | `--sim-terminate-on-stuck` | 判定卡死立即结束该局 |
 | `--sim-set=<res>\|<prop>=<val>` | 覆写 `.tres` 属性（可重复，A/B 用） |
 | `--sim-baseline=<report.json>` | A/B 对比基线 |
+| `--sim-fail-on-regression` | 开启回归门禁（需 `--sim-baseline`）；超阈值时退出码 4 |
+| `--sim-gate-win-drop=<比例>` / `--sim-gate-survival-drop=<秒>` | 允许的胜率跌幅 / 中位存活跌幅（默认 0.05 / 5） |
+| `--sim-gate-fail-on-new-critical=<bool>` | 新增 CRITICAL 异常是否算失败（默认 true） |
 | `--sim-report-name=<名称>` | 聚合报告文件名（默认 `report`） |
 | `--sim-replay` | 1x 窗口复现模式（不关渲染 / 音频） |
 | `--sim-verbose` | 额外诊断输出 |
+| `--sim-help` / `--sim-dry-run` | 打印全部参数（含默认值）/ 只校验配置并打印计划、不跑仿真 |
+| `--sim-no-determinism-check` | 跳过 repeat digest 校验（更快） |
+| `--sim-player-group=<组名>` / `--sim-enemy-group=<组名>` | 场景里玩家 / 敌人所在 group |
+| `--sim-win-rate-min` / `--sim-win-rate-max` | 胜率目标区间（异常规则用） |
+
+未知的 `--sim-*` 参数会打印 warning（不再静默忽略）；campaign 退出码：
+`0` 成功、`1` campaign 失败、`2` 参数/配置错误、`3` worker 启动失败、`4` 回归门禁失败。
 
 ---
 
@@ -539,6 +566,7 @@ Windows / Steam 版 Godot 是 GUI 子系统程序，PowerShell 不会等待。�
 | M2 | 遥测采集、卡死检测、ASCII 热力图、`report.json/md` | ✅ 已实现并验证 |
 | M3 | 批量多进程调度、统计聚合、`.tres` 覆写 A/B | ✅ 已实现并验证 |
 | M4 | 编辑器 Dock（运行 / 进度 / 预览 / 复制 / 复现 Seed） | ✅ 已实现并验证 |
+| M5 | CLI 自检（`--sim-help` / `--sim-dry-run` / 未知参数告警）、CI 硬化（脚本解析、插件加载、设置不变量）、A/B 回归门禁（exit 4） | ✅ 已实现并验证 |
 | CI | GitHub Actions 矩阵：ubuntu + windows × Godot 4.7.2，另加最新稳定版参考 leg；跑验收、上传报告 | ✅ 已实现并验证 |
 | 后续 | 2D/3D 多场景示例、报告 diff 可视化、长时仿真 Streaming | 💡 计划中 |
 
